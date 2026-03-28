@@ -34,7 +34,7 @@ export default function ChatInput({ value, onChange, onSend, disabled }: ChatInp
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Pergunte sobre seus documentos..."
+          placeholder="Pergunte sobre os produtos Hard..."
           rows={1}
           disabled={disabled}
         />
@@ -42,9 +42,14 @@ export default function ChatInput({ value, onChange, onSend, disabled }: ChatInp
           ➤
         </button>
       </div>
-      <p className="chat-disclaimer">
-        Respostas geradas por IA com base nos documentos indexados. Verifique informacoes criticas.
-      </p>
+      <div className="chat-footer">
+        <p className="chat-disclaimer">
+          Respostas geradas por IA com base nos documentos indexados. Verifique informações críticas.
+        </p>
+        <p className="chat-author">
+          Desenvolvido por <strong>Maylton Tavares</strong>
+        </p>
+      </div>
     </div>
   );
 }

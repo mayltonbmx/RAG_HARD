@@ -1,6 +1,8 @@
-# RAG Hard CMP — Chat Inteligente
+# Hard Educação — Chat Inteligente
 
-Sistema de chat RAG (Retrieval-Augmented Generation) para documentos da Hard CMP, utilizando Gemini 2.5 Flash e Pinecone Vector DB.
+> Desenvolvido por **Maylton Tavares**
+
+Sistema de chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos da Hard CMP, utilizando Gemini 2.5 Flash e Pinecone Vector DB.
 
 ## Arquitetura
 
@@ -36,17 +38,17 @@ npm run dev
 
 ## Endpoints da API
 
-| Metodo | Rota | Descricao |
+| Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/api/health` | Health check |
 | POST | `/api/chat` | Chat RAG (pergunta + contexto) |
-| POST | `/api/search` | Busca semantica |
-| POST | `/api/upload` | Upload e ingestao de arquivos |
+| POST | `/api/search` | Busca semântica |
+| POST | `/api/upload` | Upload e ingestão de arquivos |
 | GET | `/api/files` | Lista arquivos indexados |
-| GET | `/api/stats` | Estatisticas do Pinecone |
+| GET | `/api/stats` | Estatísticas do Pinecone |
 | GET | `/docs` | Swagger UI (auto-gerado) |
 
-## Variaveis de Ambiente
+## Variáveis de Ambiente
 
 ### Backend (.env)
 - `GEMINI_API_KEY` — Chave da API Google Gemini
@@ -55,3 +57,11 @@ npm run dev
 
 ### Frontend (.env.local)
 - `NEXT_PUBLIC_API_URL` — URL do backend
+
+## Autor
+
+**Maylton Tavares** — Desenvolvimento full-stack, arquitetura de IA e deploy em nuvem.
+
+---
+
+© 2026 Maylton Tavares. Todos os direitos reservados.

@@ -10,8 +10,6 @@ interface SidebarProps {
 
 const navItems: { id: ViewType; label: string; icon: string }[] = [
   { id: "chat", label: "Chat", icon: "💬" },
-  { id: "upload", label: "Upload", icon: "📤" },
-  { id: "files", label: "Arquivos", icon: "📂" },
   { id: "stats", label: "Stats", icon: "📊" },
 ];
 
@@ -21,7 +19,7 @@ export default function Sidebar({ activeView, onViewChange, onNewChat }: Sidebar
       <div className="sidebar-brand">
         <div className="brand-icon">⬡</div>
         <div className="brand-text">
-          <span className="brand-name">RAG Hard</span>
+          <span className="brand-name">Hard Educação</span>
           <span className="brand-sub">CHAT INTELIGENTE</span>
         </div>
       </div>
@@ -50,6 +48,9 @@ export default function Sidebar({ activeView, onViewChange, onNewChat }: Sidebar
           <div className="tech-badge">
             <span className="badge-dot pinecone" /> Pinecone Vector DB
           </div>
+        </div>
+        <div className="sidebar-author">
+          Desenvolvido por Maylton Tavares
         </div>
       </div>
     </aside>

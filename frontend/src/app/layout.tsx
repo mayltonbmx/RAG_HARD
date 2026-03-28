@@ -1,9 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RAG Hard CMP — Chat Inteligente",
-  description: "Chat RAG com Gemini e Pinecone para documentos da Hard CMP",
+  title: "Hard Educação — Chat Inteligente",
+  description: "Chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos Hard CMP. Desenvolvido por Maylton Tavares.",
+  authors: [{ name: "Maylton Tavares" }],
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

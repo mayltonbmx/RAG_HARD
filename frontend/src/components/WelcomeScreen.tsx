@@ -15,10 +15,10 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   return (
     <div className="welcome-screen">
       <div className="welcome-icon">⬡</div>
-      <h2>Ola! Sou o assistente Hard CMP</h2>
+      <h2>Olá! Sou o assistente da Hard Educação</h2>
       <p>
-        Faca perguntas sobre catalogos, desenhos tecnicos, fixadores e produtos.
-        Eu busco nos seus documentos e respondo com inteligencia.
+        Faça perguntas sobre catálogos, desenhos técnicos, fixadores e produtos.
+        Eu busco nos documentos e respondo com inteligência.
       </p>
       <div className="welcome-suggestions">
         {suggestions.map((s, i) => (
