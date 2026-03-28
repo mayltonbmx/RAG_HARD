@@ -5,10 +5,10 @@ interface WelcomeScreenProps {
 }
 
 const suggestions = [
-  { emoji: "🔩", text: "Fixadores autoperfurantes", question: "Quais fixadores autoperfurantes estao disponiveis?" },
-  { emoji: "🏠", text: "Coberturas sem goteiras", question: "Como evitar goteiras na cobertura?" },
-  { emoji: "📋", text: "Linhas de produtos", question: "Quais sao as linhas de produtos da Hard?" },
-  { emoji: "⚙️", text: "Linha ZAPHIR", question: "Me fale sobre a linha ZAPHIR" },
+  { emoji: "🔩", text: "Linha de autoperfurantes", question: "Me fale sobre a linha de autoperfurantes da Hard" },
+  { emoji: "🧴", text: "Linha de selantes", question: "Me fale sobre a linha de selantes da Hard" },
+  { emoji: "🔧", text: "Linha de chumbadores químicos e mecânicos", question: "Me fale sobre a linha de chumbadores quimicos e mecanicos da Hard" },
+  { emoji: "🏠", text: "Cobertura sem goteiras", question: "Como evitar goteiras na cobertura?" },
 ];
 
 export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps) {
