@@ -1,16 +1,19 @@
 """
-stats.py — GET /api/stats — Estatisticas do indice Pinecone.
+stats.py — GET /api/stats — Estatisticas do indice Pinecone (requires authentication).
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.config import get_settings
 from app.services.pinecone_db import get_stats
 from app.services.ingest import scan_directory
+from app.middleware.auth import azure_scheme
 
 router = APIRouter(prefix="/api", tags=["stats"])
 
+_deps = [Depends(azure_scheme)] if azure_scheme else []
 
-@router.get("/stats")
+
+@router.get("/stats", dependencies=_deps)
 async def stats_endpoint():
     try:
         settings = get_settings()

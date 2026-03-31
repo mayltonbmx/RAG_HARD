@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.services.pinecone_db import init_index
 from app.routers import health, chat, search, upload, files, stats
+from app.middleware.auth import azure_scheme
 
 # Logging
 logging.basicConfig(
@@ -25,16 +26,23 @@ logger = logging.getLogger("rag-hard")
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
     logger.info("=" * 50)
-    logger.info("RAG Hard CMP — Backend v2.0")
+    logger.info("Hard Educação — Backend v2.1")
     logger.info("=" * 50)
 
     settings = get_settings()
     logger.info(f"Embedding model: {settings.embedding_model}")
     logger.info(f"Generation model: {settings.generation_model}")
     logger.info(f"CORS origins: {settings.cors_origins}")
+    logger.info(f"Azure auth: {'ENABLED' if settings.azure_configured else 'DISABLED'}")
 
     # Init Pinecone index
     init_index()
+
+    # Load Azure OIDC config (JWKS keys) if configured
+    if azure_scheme is not None:
+        await azure_scheme.openid_config.load_config()
+        logger.info("Azure OIDC config loaded successfully")
+
     logger.info("Startup complete")
 
     yield  # App is running
@@ -44,9 +52,9 @@ async def lifespan(app: FastAPI):
 
 # Create app
 app = FastAPI(
-    title="RAG Hard CMP API",
-    description="API de chat RAG com Gemini + Pinecone para documentos da Hard CMP",
-    version="2.0.0",
+    title="Hard Educação API",
+    description="API de chat RAG com Gemini + Pinecone — Desenvolvido por Maylton Tavares",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
@@ -72,7 +80,8 @@ app.include_router(stats.router)
 @app.get("/")
 async def root():
     return {
-        "name": "RAG Hard CMP API",
-        "version": "2.0.0",
+        "name": "Hard Educação API",
+        "version": "2.1.0",
+        "auth": "Azure Entra ID" if settings.azure_configured else "disabled",
         "docs": "/docs",
     }

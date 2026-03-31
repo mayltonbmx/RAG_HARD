@@ -36,9 +36,18 @@ class Settings(BaseSettings):
     # Data directory
     data_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
+    # Azure Entra ID (OpenID Connect)
+    azure_tenant_id: str = ""
+    azure_client_id: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",")]
+
+    @property
+    def azure_configured(self) -> bool:
+        """Check if Azure auth credentials are provided."""
+        return bool(self.azure_tenant_id and self.azure_client_id)
 
 
 @lru_cache()

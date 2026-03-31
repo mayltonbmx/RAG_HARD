@@ -1,21 +1,25 @@
 """
-upload.py — POST /api/upload — Upload e ingestao de arquivos.
+upload.py — POST /api/upload — Upload e ingestao de arquivos (requires Admin role).
 """
 
 import os
 import logging
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 
 from app.config import get_settings, SUPPORTED_EXTENSIONS
 from app.services.ingest import ingest_pdf_chunked, ingest_file_whole, generate_id
 from app.services.pinecone_db import upsert_vectors
+from app.middleware.auth import azure_scheme, require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["upload"])
 
+# Admin-only: require both authentication and Admin role
+_deps = [Depends(azure_scheme), Depends(require_admin)] if azure_scheme else [Depends(require_admin)]
 
-@router.post("/upload")
+
+@router.post("/upload", dependencies=_deps)
 async def upload_files(files: list[UploadFile] = File(...)):
     settings = get_settings()
     results = {"success": [], "errors": []}
