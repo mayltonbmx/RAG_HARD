@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ChatMessage, SourceItem } from "@/types";
-import { sendChatStream } from "@/lib/api";
+import { sendChat, sendChatStream } from "@/lib/api";
 import ChatMessageBubble, { ThinkingIndicator } from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import WelcomeScreen from "./WelcomeScreen";
@@ -22,6 +22,20 @@ export default function ChatView() {
     scrollToBottom();
   }, [messages, isLoading, isStreaming, scrollToBottom]);
 
+  /** Fallback: usa endpoint clássico /api/chat quando streaming não está disponível */
+  const handleFallbackChat = async (
+    message: string,
+    history: { role: string; content: string }[]
+  ) => {
+    const response = await sendChat({ message, history, top_k: 8 });
+    const assistantMsg: ChatMessage = {
+      role: "assistant",
+      content: response.answer,
+      sources: response.sources,
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
+  };
+
   const handleSend = async (text?: string) => {
     const message = (text || input).trim();
     if (!message || isLoading || isStreaming) return;
@@ -31,13 +45,13 @@ export default function ChatView() {
     setInput("");
     setIsLoading(true);
 
-    try {
-      const history = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+    const history = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-      // Cria mensagem do assistente vazia para streaming
+    try {
+      // Tenta streaming primeiro
       const assistantMsg: ChatMessage = {
         role: "assistant",
         content: "",
@@ -99,15 +113,41 @@ export default function ChatView() {
         }
       );
     } catch (err) {
-      const errorMsg: ChatMessage = {
-        role: "assistant",
-        content: `❌ Erro: ${err instanceof Error ? err.message : "Erro desconhecido"}`,
-      };
-      setMessages((prev) => {
-        // Remove empty assistant message if exists
-        const cleaned = prev.filter((m, i) => !(i === prev.length - 1 && m.role === "assistant" && !m.content));
-        return [...cleaned, errorMsg];
-      });
+      // Fallback: se streaming falhar (404, rede), tenta endpoint clássico
+      const errorMessage = err instanceof Error ? err.message : "";
+      const isStreamingUnavailable = errorMessage.includes("Not Found") ||
+        errorMessage.includes("404") ||
+        errorMessage.includes("Failed to fetch") ||
+        errorMessage.includes("Streaming não suportado");
+
+      if (isStreamingUnavailable) {
+        console.warn("Streaming indisponível, usando fallback clássico");
+        // Remove mensagem vazia do assistente (do streaming)
+        setMessages((prev) => prev.filter((m, i) =>
+          !(i === prev.length - 1 && m.role === "assistant" && !m.content)
+        ));
+        setIsStreaming(false);
+        setIsLoading(true);
+
+        try {
+          await handleFallbackChat(message, history);
+        } catch (fallbackErr) {
+          setMessages((prev) => [...prev, {
+            role: "assistant" as const,
+            content: `❌ Erro: ${fallbackErr instanceof Error ? fallbackErr.message : "Erro desconhecido"}`,
+          }]);
+        }
+      } else {
+        setMessages((prev) => {
+          const cleaned = prev.filter((m, i) =>
+            !(i === prev.length - 1 && m.role === "assistant" && !m.content)
+          );
+          return [...cleaned, {
+            role: "assistant" as const,
+            content: `❌ Erro: ${errorMessage || "Erro desconhecido"}`,
+          }];
+        });
+      }
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
