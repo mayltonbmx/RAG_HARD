@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Hard Educação — Chat Inteligente",
-  description: "Chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos Hard CMP. Desenvolvido por Maylton Tavares.",
+  description: "Chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos Hard. Desenvolvido por Maylton Tavares.",
   authors: [{ name: "Maylton Tavares" }],
 };
 

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Data directory
     data_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
+    # RAG settings
+    min_score_threshold: float = 0.35
+
     # Azure Entra ID (OpenID Connect)
     azure_tenant_id: str = ""
     azure_client_id: str = ""

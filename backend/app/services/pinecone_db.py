@@ -61,17 +61,21 @@ def upsert_vectors(vectors: list[dict], namespace: str = "", batch_size: int = 5
 
 
 def search(query_vector: list[float], top_k: int = 5, namespace: str = "",
-           filter_dict: dict | None = None) -> list[dict]:
-    """Busca vetores mais similares."""
+           filter_dict: dict | None = None, min_score: float = 0.35) -> list[dict]:
+    """Busca vetores mais similares, filtrando resultados abaixo do score mínimo."""
     index = _get_index()
     results = index.query(
         vector=query_vector, top_k=top_k,
         include_metadata=True, namespace=namespace, filter=filter_dict,
     )
-    return [
+    matches = [
         {"id": m.id, "score": m.score, "metadata": m.metadata}
         for m in results.matches
+        if m.score >= min_score
     ]
+    if len(matches) < len(results.matches):
+        logger.info(f"Score threshold {min_score}: {len(results.matches)} -> {len(matches)} results (filtered {len(results.matches) - len(matches)} low-score)")
+    return matches
 
 
 def get_stats() -> dict:

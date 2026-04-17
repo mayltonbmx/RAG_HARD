@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 from app.config import get_settings, SUPPORTED_EXTENSIONS
-from app.services.embeddings import embed_file, embed_text
+from app.services.embeddings import embed_file, embed_text, embed_texts_batch
 from app.services.pinecone_db import init_index, upsert_vectors
 from app.services.chunker import chunk_pdf, get_pdf_info
 
@@ -83,9 +83,12 @@ def ingest_pdf_chunked(filepath: str, filename: str, size_mb: float) -> list[dic
 
     logger.info(f"{filename}: {pdf_info['page_count']} pages -> {len(chunks)} chunks")
 
+    # Batch embedding: coleta todos os textos e gera embeddings de uma vez
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    embeddings = embed_texts_batch(chunk_texts, task_type="RETRIEVAL_DOCUMENT")
+
     vectors = []
-    for chunk in chunks:
-        embedding = embed_text(chunk["text"], task_type="RETRIEVAL_DOCUMENT")
+    for chunk, embedding in zip(chunks, embeddings):
         text_for_meta = chunk["text"][:8000]
 
         page_label = f"p.{chunk['page_start']}"

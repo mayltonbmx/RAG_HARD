@@ -55,6 +55,71 @@ export async function sendChat(data: ChatRequest): Promise<ChatResponse> {
   });
 }
 
+export interface StreamCallbacks {
+  onToken: (token: string) => void;
+  onMeta: (meta: { sources: ChatResponse["sources"]; model: string; chunks_used: number }) => void;
+  onError: (error: string) => void;
+  onDone: () => void;
+}
+
+export async function sendChatStream(data: ChatRequest, callbacks: StreamCallbacks): Promise<void> {
+  const token = await getAccessToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_URL}/api/chat/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error("Sessão expirada. Faça login novamente.");
+    if (res.status === 403) throw new Error("Acesso negado. Permissão insuficiente.");
+    throw new Error(body.detail || `API error: ${res.status}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("Streaming não suportado");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "token") {
+            callbacks.onToken(event.content);
+          } else if (event.type === "meta") {
+            callbacks.onMeta(event);
+          } else if (event.type === "error") {
+            callbacks.onError(event.content);
+          } else if (event.type === "done") {
+            callbacks.onDone();
+          }
+        } catch {
+          // Ignore malformed JSON
+        }
+      }
+    }
+  }
+}
+
 export async function getFiles(): Promise<{ files: FileItem[] }> {
   return request<{ files: FileItem[] }>("/api/files");
 }

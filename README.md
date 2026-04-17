@@ -2,7 +2,7 @@
 
 > Desenvolvido por **Maylton Tavares**
 
-Sistema de chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos da Hard CMP, utilizando Gemini 2.5 Flash e Pinecone Vector DB.
+Sistema de chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos da Hard, utilizando Gemini 2.5 Flash e Pinecone Vector DB.
 
 ## Arquitetura
 
