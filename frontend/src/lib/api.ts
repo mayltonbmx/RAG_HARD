@@ -5,10 +5,20 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 /**
  * Get the access token from the current session.
+ * Checks Azure session first, then admin JWT from localStorage.
  */
 async function getAccessToken(): Promise<string | undefined> {
+  // Try Azure session first
   const session = await getSession();
-  return session?.accessToken;
+  if (session?.accessToken) return session.accessToken;
+
+  // Fallback to admin JWT
+  if (typeof window !== "undefined") {
+    const adminToken = localStorage.getItem("admin_token");
+    if (adminToken) return adminToken;
+  }
+
+  return undefined;
 }
 
 /**
@@ -158,4 +168,71 @@ export async function uploadFiles(files: FileList): Promise<UploadResult> {
 
 export async function healthCheck(): Promise<{ status: string }> {
   return request<{ status: string }>("/api/health");
+}
+
+// Analytics
+export interface TopQuery {
+  query: string;
+  count: number;
+  query_hash: string;
+}
+
+export interface AnalyticsStats {
+  total_queries: number;
+  avg_latency_ms: number;
+  avg_chunks_used: number;
+  avg_score: number;
+  intent_distribution: Record<string, number>;
+  queries_per_day: Record<string, number>;
+  period_days: number;
+}
+
+export async function getTopQueries(limit = 20, days = 30): Promise<{ queries: TopQuery[]; days: number }> {
+  return request<{ queries: TopQuery[]; days: number }>(`/api/analytics/top-queries?limit=${limit}&days=${days}`);
+}
+
+export async function getAnalyticsStats(days = 30): Promise<AnalyticsStats> {
+  return request<AnalyticsStats>(`/api/analytics/stats?days=${days}`);
+}
+
+// Admin Auth
+export async function adminLogin(username: string, password: string): Promise<{ token: string; role: string }> {
+  const res = await fetch(`${API_URL}/api/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Login falhou");
+  }
+
+  const data = await res.json();
+  if (typeof window !== "undefined") {
+    localStorage.setItem("admin_token", data.token);
+  }
+  return data;
+}
+
+export function adminLogout() {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("admin_token");
+  }
+}
+
+export function getAdminToken(): string | null {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("admin_token");
+  }
+  return null;
+}
+
+// File management
+export async function deleteFile(filename: string): Promise<{ action: string; filename: string; vectors_removed: number }> {
+  return request(`/api/files/${encodeURIComponent(filename)}`, { method: "DELETE" });
+}
+
+export async function standbyFile(filename: string): Promise<{ action: string; filename: string; vectors_removed: number }> {
+  return request(`/api/files/${encodeURIComponent(filename)}/standby`, { method: "PATCH" });
 }

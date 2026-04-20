@@ -1,20 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { ViewType } from "@/types";
+import { getAdminToken } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ChatView from "@/components/ChatView";
 import StatsView from "@/components/StatsView";
 import UploadView from "@/components/UploadView";
 import FilesView from "@/components/FilesView";
+import AnalyticsView from "@/components/AnalyticsView";
+import AdminLoginScreen from "@/components/AdminLoginScreen";
 
 export default function Home() {
   const [activeView, setActiveView] = useState<ViewType>("chat");
   const { data: session } = useSession();
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
 
-  const roles: string[] = session?.roles ?? [];
-  const isAdmin = roles.includes("Admin");
+  // Check for existing admin JWT on mount
+  useEffect(() => {
+    const token = getAdminToken();
+    if (token) {
+      setIsAdminLoggedIn(true);
+    }
+  }, []);
+
+  const azureRoles: string[] = session?.roles ?? [];
+  const isAdmin = azureRoles.includes("Admin") || isAdminLoggedIn;
+
+  const handleAdminLoginSuccess = () => {
+    setIsAdminLoggedIn(true);
+    setActiveView("analytics");
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminLoggedIn(false);
+    setActiveView("chat");
+  };
+
+  // Show admin login screen if trying to access admin views without auth
+  const needsAdminLogin = !isAdmin && ["analytics", "upload", "files"].includes(activeView);
 
   return (
     <div className="app-layout">
@@ -25,10 +50,14 @@ export default function Home() {
           setActiveView("stats");
           setTimeout(() => setActiveView("chat"), 0);
         }}
+        isAdminLoggedIn={isAdminLoggedIn}
+        onAdminLogout={handleAdminLogout}
       />
       <main className="main-content">
         {activeView === "chat" && <ChatView />}
         {activeView === "stats" && <StatsView />}
+        {needsAdminLogin && <AdminLoginScreen onLoginSuccess={handleAdminLoginSuccess} />}
+        {activeView === "analytics" && isAdmin && <AnalyticsView />}
         {activeView === "upload" && isAdmin && <UploadView />}
         {activeView === "files" && isAdmin && <FilesView />}
       </main>

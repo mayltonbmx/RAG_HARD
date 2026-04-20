@@ -7,6 +7,7 @@ import hashlib
 from functools import lru_cache
 from google import genai
 from google.genai import types
+from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 
 from app.config import get_settings
 
@@ -24,6 +25,8 @@ def _get_client() -> genai.Client:
     return _client
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
+       before_sleep=before_sleep_log(logger, logging.WARNING), reraise=True)
 def embed_text(text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
     """Gera embedding de texto puro."""
     settings = get_settings()

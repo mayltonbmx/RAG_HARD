@@ -10,13 +10,13 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from app.config import get_settings, SUPPORTED_EXTENSIONS
 from app.services.ingest import ingest_pdf_chunked, ingest_file_whole, generate_id
 from app.services.pinecone_db import upsert_vectors
-from app.middleware.auth import azure_scheme, require_admin
+from app.middleware.auth import require_admin_any
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["upload"])
 
-# Admin-only: require both authentication and Admin role
-_deps = [Depends(azure_scheme), Depends(require_admin)] if azure_scheme else [Depends(require_admin)]
+# Admin-only: require admin login (Azure or generic JWT)
+_deps = [Depends(require_admin_any)]
 
 
 @router.post("/upload", dependencies=_deps)

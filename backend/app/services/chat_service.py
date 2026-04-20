@@ -4,12 +4,15 @@ chat_service.py — RAG Chat pipeline: busca contexto + gera resposta via Gemini
 
 import json
 import logging
+import time
 from google import genai
 from google.genai import types
+from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 
 from app.config import get_settings
 from app.services.embeddings import embed_query
 from app.services.pinecone_db import search as pinecone_search
+from app.services.analytics import log_chat_event
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +288,9 @@ Responda utilizando as informacoes dos trechos. Nao cite fontes ou referencias a
         "search_results": search_results,
         "settings": settings,
         "client": client,
+        "search_query": search_query,
+        "intent": intent_info["intent"],
+        "start_time": time.perf_counter(),
     }
 
 
@@ -333,21 +339,43 @@ def chat(message: str, history: list[dict] | None = None, top_k: int = 8) -> dic
     """Processa mensagem usando RAG (resposta completa, sem streaming)."""
     ctx = _prepare_chat_context(message, history, top_k)
 
-    # 8. Gera resposta
-    response = ctx["client"].models.generate_content(
-        model=ctx["settings"].generation_model,
-        contents=ctx["contents"],
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.5,
-            max_output_tokens=4096,
-        ),
-    )
+    # 8. Gera resposta (com retry para erros transientes)
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
+           before_sleep=before_sleep_log(logger, logging.WARNING), reraise=True)
+    def _generate():
+        return ctx["client"].models.generate_content(
+            model=ctx["settings"].generation_model,
+            contents=ctx["contents"],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.5,
+                max_output_tokens=4096,
+            ),
+        )
+
+    response = _generate()
 
     answer = response.text if response.text else "Desculpe, nao consegui gerar uma resposta."
 
     # 9. Fontes
     sources = _build_sources(ctx["search_results"])
+
+    # 10. Analytics
+    latency_ms = (time.perf_counter() - ctx["start_time"]) * 1000
+    scores = [r.get("score", 0) for r in ctx["search_results"]]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    try:
+        log_chat_event(
+            query=message,
+            rewritten_query=ctx.get("search_query"),
+            intent=ctx.get("intent", "geral"),
+            latency_ms=latency_ms,
+            chunks_used=len(ctx["search_results"]),
+            avg_score=avg_score,
+            model=ctx["settings"].generation_model,
+        )
+    except Exception as e:
+        logger.warning(f"Analytics log failed: {e}")
 
     return {"answer": answer, "sources": sources, "model": ctx["settings"].generation_model, "chunks_used": len(ctx["search_results"])}
 
@@ -394,6 +422,23 @@ def chat_stream(message: str, history: list[dict] | None = None, top_k: int = 8)
         logger.error(f"Streaming error: {e}")
         error_event = {"type": "error", "content": f"Erro ao gerar resposta: {e}"}
         yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+    # Analytics
+    latency_ms = (time.perf_counter() - ctx["start_time"]) * 1000
+    scores = [r.get("score", 0) for r in ctx["search_results"]]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    try:
+        log_chat_event(
+            query=message,
+            rewritten_query=ctx.get("search_query"),
+            intent=ctx.get("intent", "geral"),
+            latency_ms=latency_ms,
+            chunks_used=len(ctx["search_results"]),
+            avg_score=avg_score,
+            model=ctx["settings"].generation_model,
+        )
+    except Exception as e:
+        logger.warning(f"Analytics log failed: {e}")
 
     # Sinaliza fim do stream
     yield f"data: {json.dumps({'type': 'done'})}\n\n"

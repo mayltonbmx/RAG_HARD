@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.services.pinecone_db import init_index
-from app.routers import health, chat, search, upload, files, stats
+from app.routers import health, chat, search, upload, files, stats, analytics, admin_auth
 from app.middleware.auth import azure_scheme
 
 # Logging
@@ -26,7 +26,7 @@ logger = logging.getLogger("rag-hard")
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
     logger.info("=" * 50)
-    logger.info("Hard Educação — Backend v2.1")
+    logger.info("Hard Educação — Backend v2.5")
     logger.info("=" * 50)
 
     settings = get_settings()
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Hard Educação API",
     description="API de chat RAG com Gemini + Pinecone — Desenvolvido por Maylton Tavares",
-    version="2.1.0",
+    version="2.5.0",
     lifespan=lifespan,
 )
 
@@ -75,13 +75,15 @@ app.include_router(search.router)
 app.include_router(upload.router)
 app.include_router(files.router)
 app.include_router(stats.router)
+app.include_router(analytics.router)
+app.include_router(admin_auth.router)
 
 
 @app.get("/")
 async def root():
     return {
         "name": "Hard Educação API",
-        "version": "2.1.0",
+        "version": "2.5.0",
         "auth": "Azure Entra ID" if settings.azure_configured else "disabled",
         "docs": "/docs",
     }

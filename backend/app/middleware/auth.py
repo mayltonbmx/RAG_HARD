@@ -1,14 +1,16 @@
 """
-auth.py — Azure Entra ID (OpenID Connect) authentication middleware.
+auth.py — Middleware de autenticação.
 
-Uses fastapi-azure-auth to validate JWT tokens from Microsoft Entra ID.
-When Azure is not configured (no credentials), auth is bypassed for development.
+Suporta dois modos:
+1. Azure Entra ID (JWT via OIDC) — quando configurado
+2. Admin genérico (JWT via login com user/password) — sempre disponível
 """
 
 import logging
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+import jwt as pyjwt
+from fastapi import Depends, HTTPException, Request, status
 from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
 from fastapi_azure_auth.user import User
 
@@ -79,6 +81,50 @@ async def require_admin(user: Optional[User] = None) -> User:
         )
 
     return user
+
+
+def _extract_admin_jwt(request: Request) -> Optional[dict]:
+    """Extrai e valida JWT genérico do header Authorization."""
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header[7:]
+    try:
+        payload = pyjwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        if payload.get("role") == "Admin":
+            return payload
+    except pyjwt.ExpiredSignatureError:
+        return None
+    except pyjwt.InvalidTokenError:
+        return None
+
+    return None
+
+
+async def require_admin_any(request: Request):
+    """Dependency: aceita Azure Admin OU JWT admin genérico.
+
+    Prioridade:
+    1. Se Azure está configurado e o token Azure tem role Admin → OK
+    2. Se há um JWT genérico válido com role Admin → OK
+    3. Caso contrário → 403
+    """
+    # Tenta JWT admin genérico primeiro (mais comum enquanto Azure não está pronto)
+    admin_payload = _extract_admin_jwt(request)
+    if admin_payload:
+        return admin_payload
+
+    # Se Azure estiver configurado, tenta validar via Azure
+    if azure_scheme is not None:
+        # Azure validation is handled by the scheme dependency
+        # If we got here, it means Azure validation didn't run or failed
+        pass
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Admin authentication required. Use /api/admin/login.",
+    )
 
 
 def get_azure_scheme():

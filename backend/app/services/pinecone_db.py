@@ -81,3 +81,38 @@ def search(query_vector: list[float], top_k: int = 5, namespace: str = "",
 def get_stats() -> dict:
     """Estatísticas do índice."""
     return _get_index().describe_index_stats()
+
+
+def delete_by_filename(filename: str, namespace: str = "") -> int:
+    """Remove todos os vetores com metadata.filename == filename."""
+    index = _get_index()
+
+    # Busca IDs com o filename no metadata
+    # Pinecone serverless requer list + delete
+    try:
+        # Tenta query com filter para encontrar IDs
+        results = index.query(
+            vector=[0.0] * get_settings().embedding_dimensions,
+            top_k=10000,
+            filter={"filename": {"$eq": filename}},
+            include_metadata=False,
+            namespace=namespace,
+        )
+
+        ids_to_delete = [m.id for m in results.matches]
+
+        if ids_to_delete:
+            # Deleta em batches de 100
+            for i in range(0, len(ids_to_delete), 100):
+                batch = ids_to_delete[i:i + 100]
+                index.delete(ids=batch, namespace=namespace)
+
+            logger.info(f"Deleted {len(ids_to_delete)} vectors for filename: {filename}")
+        else:
+            logger.info(f"No vectors found for filename: {filename}")
+
+        return len(ids_to_delete)
+
+    except Exception as e:
+        logger.error(f"Delete by filename failed for {filename}: {e}")
+        raise

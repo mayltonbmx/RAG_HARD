@@ -46,4 +46,4 @@ export interface UploadResult {
   errors: { file: string; error: string }[];
 }
 
-export type ViewType = "chat" | "upload" | "files" | "stats";
+export type ViewType = "chat" | "upload" | "files" | "stats" | "analytics";
