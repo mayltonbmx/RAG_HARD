@@ -50,7 +50,7 @@ jobs:
             --region=${{ env.REGION }} \
             --platform=managed \
             --allow-unauthenticated \
-            --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }},PINECONE_INDEX_NAME=rag-hard-multimodal,ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" \
+            --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},PINECONE_API_KEY=${{ secrets.PINECONE_API_KEY }},PINECONE_INDEX_NAME=rag-hard-multimodal,ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }},ADMIN_USER=${{ secrets.ADMIN_USER }},ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }},JWT_SECRET=${{ secrets.JWT_SECRET }}" \
             --memory=512Mi \
             --cpu=1 \
             --min-instances=0 \
