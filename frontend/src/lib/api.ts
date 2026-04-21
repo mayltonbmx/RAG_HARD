@@ -236,3 +236,7 @@ export async function deleteFile(filename: string): Promise<{ action: string; fi
 export async function standbyFile(filename: string): Promise<{ action: string; filename: string; vectors_removed: number }> {
   return request(`/api/files/${encodeURIComponent(filename)}/standby`, { method: "PATCH" });
 }
+
+export async function activateFile(filename: string): Promise<{ action: string; filename: string; vectors_inserted: number }> {
+  return request(`/api/files/${encodeURIComponent(filename)}/activate`, { method: "PATCH" });
+}

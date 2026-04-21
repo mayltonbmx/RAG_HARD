@@ -116,3 +116,66 @@ def delete_by_filename(filename: str, namespace: str = "") -> int:
     except Exception as e:
         logger.error(f"Delete by filename failed for {filename}: {e}")
         raise
+
+
+def get_indexed_filenames(namespace: str = "") -> set[str]:
+    """Consulta o Pinecone para descobrir quais filenames possuem vetores ativos.
+
+    Retorna um set com os nomes dos arquivos que têm pelo menos 1 vetor indexado.
+    """
+    files_meta = get_indexed_files_metadata(namespace)
+    return {f["name"] for f in files_meta}
+
+
+def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
+    """Consulta o Pinecone e retorna inventário completo dos arquivos indexados.
+
+    Agrega informações dos vetores por filename, retornando:
+    - name, extension, mime_type, size_mb, file_type
+    - vectors_count (quantos vetores/chunks o arquivo tem)
+    - status = "active" (está no Pinecone)
+
+    Esta é a fonte de verdade sobre o que a IA conhece.
+    """
+    index = _get_index()
+    settings = get_settings()
+    dim = settings.embedding_dimensions
+
+    files: dict[str, dict] = {}
+
+    try:
+        results = index.query(
+            vector=[0.0] * dim,
+            top_k=10000,
+            include_metadata=True,
+            namespace=namespace,
+        )
+
+        for match in results.matches:
+            meta = match.metadata
+            if not meta or "filename" not in meta:
+                continue
+
+            fname = meta["filename"]
+
+            if fname not in files:
+                files[fname] = {
+                    "name": fname,
+                    "extension": meta.get("file_type", ""),
+                    "mime_type": meta.get("mime_type", ""),
+                    "size_mb": meta.get("size_mb", 0),
+                    "file_type": meta.get("file_type", ""),
+                    "vectors_count": 0,
+                    "status": "active",
+                    "source": "pinecone",
+                }
+
+            files[fname]["vectors_count"] += 1
+
+        result = sorted(files.values(), key=lambda f: f["name"])
+        logger.info(f"Pinecone inventory: {len(result)} files, {sum(f['vectors_count'] for f in result)} total vectors")
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to get indexed files metadata: {e}")
+        return []
