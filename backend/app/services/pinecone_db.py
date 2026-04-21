@@ -138,7 +138,7 @@ def insert_deletion_record(filename: str, extension: str, mime_type: str,
 
     tombstone = {
         "id": tombstone_id,
-        "values": [0.0] * dim,
+        "values": [1e-7] * dim,  # epsilon, não zero (cosseno de zero é indefinido)
         "metadata": {
             "filename": filename,
             "file_type": extension,
