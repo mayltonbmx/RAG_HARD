@@ -2,7 +2,10 @@
 pinecone_db.py — Conexão e operações com o banco vetorial Pinecone.
 """
 
+import hashlib
 import logging
+from datetime import datetime, timezone
+
 from pinecone import Pinecone, ServerlessSpec
 
 from app.config import get_settings
@@ -84,37 +87,98 @@ def get_stats() -> dict:
 
 
 def delete_by_filename(filename: str, namespace: str = "") -> int:
-    """Remove todos os vetores com metadata.filename == filename."""
+    """Remove todos os vetores com metadata.filename == filename (exceto tombstones)."""
     index = _get_index()
 
-    # Busca IDs com o filename no metadata
-    # Pinecone serverless requer list + delete
     try:
-        # Tenta query com filter para encontrar IDs
         results = index.query(
             vector=[0.0] * get_settings().embedding_dimensions,
             top_k=10000,
             filter={"filename": {"$eq": filename}},
-            include_metadata=False,
+            include_metadata=True,
             namespace=namespace,
         )
 
-        ids_to_delete = [m.id for m in results.matches]
+        # Filtra IDs que NÃO são tombstones (não queremos deletar o histórico)
+        ids_to_delete = [
+            m.id for m in results.matches
+            if not m.metadata.get("is_tombstone", False)
+        ]
 
         if ids_to_delete:
-            # Deleta em batches de 100
             for i in range(0, len(ids_to_delete), 100):
                 batch = ids_to_delete[i:i + 100]
                 index.delete(ids=batch, namespace=namespace)
 
             logger.info(f"Deleted {len(ids_to_delete)} vectors for filename: {filename}")
         else:
-            logger.info(f"No vectors found for filename: {filename}")
+            logger.info(f"No active vectors found for filename: {filename}")
 
         return len(ids_to_delete)
 
     except Exception as e:
         logger.error(f"Delete by filename failed for {filename}: {e}")
+        raise
+
+
+def insert_deletion_record(filename: str, extension: str, mime_type: str,
+                           size_mb: float, vectors_removed: int,
+                           namespace: str = "") -> None:
+    """Insere um vetor tombstone no Pinecone para registrar a exclusão de um arquivo.
+
+    O tombstone usa um vetor zero e metadados especiais para que:
+    - Não apareça em buscas de RAG (score ~0)
+    - Seja identificável como registro de exclusão (is_tombstone=True)
+    - Contenha info do arquivo original para histórico
+    """
+    index = _get_index()
+    dim = get_settings().embedding_dimensions
+
+    tombstone_id = f"tombstone_{hashlib.md5(f'{filename}_{datetime.now(timezone.utc).isoformat()}'.encode()).hexdigest()}"
+
+    tombstone = {
+        "id": tombstone_id,
+        "values": [0.0] * dim,
+        "metadata": {
+            "filename": filename,
+            "file_type": extension,
+            "mime_type": mime_type,
+            "size_mb": size_mb,
+            "is_tombstone": True,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "vectors_removed": vectors_removed,
+            "content_type": "deletion_record",
+            "text": f"[Registro de exclusão: {filename}]",
+        },
+    }
+
+    index.upsert(vectors=[tombstone], namespace=namespace)
+    logger.info(f"Tombstone inserted for deleted file: {filename}")
+
+
+def delete_tombstone(filename: str, namespace: str = "") -> int:
+    """Remove o tombstone de um arquivo do histórico de exclusão."""
+    index = _get_index()
+
+    try:
+        results = index.query(
+            vector=[0.0] * get_settings().embedding_dimensions,
+            top_k=10000,
+            filter={"filename": {"$eq": filename}, "is_tombstone": {"$eq": True}},
+            include_metadata=False,
+            namespace=namespace,
+        )
+
+        ids = [m.id for m in results.matches]
+        if ids:
+            for i in range(0, len(ids), 100):
+                index.delete(ids=ids[i:i + 100], namespace=namespace)
+            logger.info(f"Removed {len(ids)} tombstones for: {filename}")
+
+        return len(ids)
+
+    except Exception as e:
+        logger.error(f"Failed to delete tombstone for {filename}: {e}")
         raise
 
 
@@ -124,24 +188,22 @@ def get_indexed_filenames(namespace: str = "") -> set[str]:
     Retorna um set com os nomes dos arquivos que têm pelo menos 1 vetor indexado.
     """
     files_meta = get_indexed_files_metadata(namespace)
-    return {f["name"] for f in files_meta}
+    return {f["name"] for f in files_meta if f["status"] == "active"}
 
 
 def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
-    """Consulta o Pinecone e retorna inventário completo dos arquivos indexados.
+    """Consulta o Pinecone e retorna inventário completo: arquivos ativos + histórico de exclusão.
 
-    Agrega informações dos vetores por filename, retornando:
-    - name, extension, mime_type, size_mb, file_type
-    - vectors_count (quantos vetores/chunks o arquivo tem)
-    - status = "active" (está no Pinecone)
-
-    Esta é a fonte de verdade sobre o que a IA conhece.
+    Retorna dois tipos de registros:
+    - status="active": arquivos com vetores ativos (a IA conhece)
+    - status="deleted": tombstones de arquivos excluídos (histórico)
     """
     index = _get_index()
     settings = get_settings()
     dim = settings.embedding_dimensions
 
-    files: dict[str, dict] = {}
+    active_files: dict[str, dict] = {}
+    deleted_files: list[dict] = []
 
     try:
         results = index.query(
@@ -158,8 +220,22 @@ def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
 
             fname = meta["filename"]
 
-            if fname not in files:
-                files[fname] = {
+            # Tombstone = registro de exclusão
+            if meta.get("is_tombstone", False):
+                deleted_files.append({
+                    "name": fname,
+                    "extension": meta.get("file_type", ""),
+                    "mime_type": meta.get("mime_type", ""),
+                    "size_mb": meta.get("size_mb", 0),
+                    "vectors_count": meta.get("vectors_removed", 0),
+                    "status": "deleted",
+                    "deleted_at": meta.get("deleted_at", ""),
+                })
+                continue
+
+            # Arquivo ativo
+            if fname not in active_files:
+                active_files[fname] = {
                     "name": fname,
                     "extension": meta.get("file_type", ""),
                     "mime_type": meta.get("mime_type", ""),
@@ -170,11 +246,13 @@ def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
                     "source": "pinecone",
                 }
 
-            files[fname]["vectors_count"] += 1
+            active_files[fname]["vectors_count"] += 1
 
-        result = sorted(files.values(), key=lambda f: f["name"])
-        logger.info(f"Pinecone inventory: {len(result)} files, {sum(f['vectors_count'] for f in result)} total vectors")
-        return result
+        active = sorted(active_files.values(), key=lambda f: f["name"])
+        deleted = sorted(deleted_files, key=lambda f: f.get("deleted_at", ""), reverse=True)
+
+        logger.info(f"Pinecone inventory: {len(active)} active, {len(deleted)} deleted, {sum(f['vectors_count'] for f in active)} total vectors")
+        return active + deleted
 
     except Exception as e:
         logger.error(f"Failed to get indexed files metadata: {e}")

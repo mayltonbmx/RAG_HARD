@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { FileItem } from "@/types";
-import { getFiles, deleteFile, standbyFile, activateFile } from "@/lib/api";
+import { getFiles, deleteFile, clearFileHistory } from "@/lib/api";
 
 type FileCategory = "documents" | "images" | "videos";
 
@@ -52,9 +52,18 @@ export default function FilesView() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     filename: string;
-    type: "delete" | "standby" | "activate";
-    currentStatus: "active" | "standby";
+    type: "delete" | "clear_history";
   } | null>(null);
+  const [searchTerms, setSearchTerms] = useState<Record<FileCategory, string>>({
+    documents: "",
+    images: "",
+    videos: "",
+  });
+  const [searchOpen, setSearchOpen] = useState<Record<FileCategory, boolean>>({
+    documents: false,
+    images: false,
+    videos: false,
+  });
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -73,15 +82,13 @@ export default function FilesView() {
     fetchFiles();
   }, []);
 
-  const handleAction = async (filename: string, type: "delete" | "standby" | "activate") => {
+  const handleAction = async (filename: string, type: "delete" | "clear_history") => {
     setActionLoading(filename);
     try {
       if (type === "delete") {
         await deleteFile(filename);
-      } else if (type === "standby") {
-        await standbyFile(filename);
-      } else if (type === "activate") {
-        await activateFile(filename);
+      } else if (type === "clear_history") {
+        await clearFileHistory(filename);
       }
       setConfirmAction(null);
       await fetchFiles();
@@ -92,24 +99,35 @@ export default function FilesView() {
     }
   };
 
-  // Group files by category
-  const grouped: Record<FileCategory, { active: FileItem[]; standby: FileItem[] }> = {
-    documents: { active: [], standby: [] },
-    images: { active: [], standby: [] },
-    videos: { active: [], standby: [] },
-  };
+  // Group and filter files by category
+  const grouped = useMemo(() => {
+    const result: Record<FileCategory, { active: FileItem[]; deleted: FileItem[] }> = {
+      documents: { active: [], deleted: [] },
+      images: { active: [], deleted: [] },
+      videos: { active: [], deleted: [] },
+    };
 
-  for (const file of files) {
-    const cat = getCategory(file.extension);
-    if (file.status === "active") {
-      grouped[cat].active.push(file);
-    } else {
-      grouped[cat].standby.push(file);
+    for (const file of files) {
+      const cat = getCategory(file.extension);
+      const term = searchTerms[cat].toLowerCase();
+
+      // Apply search filter
+      if (term && !file.name.toLowerCase().includes(term)) {
+        continue;
+      }
+
+      if (file.status === "deleted") {
+        result[cat].deleted.push(file);
+      } else {
+        result[cat].active.push(file);
+      }
     }
-  }
+
+    return result;
+  }, [files, searchTerms]);
 
   const totalActive = files.filter((f) => f.status === "active").length;
-  const totalStandby = files.filter((f) => f.status === "standby").length;
+  const totalDeleted = files.filter((f) => f.status === "deleted").length;
 
   if (loading) {
     return (
@@ -131,10 +149,10 @@ export default function FilesView() {
             <span className="status-dot status-active" />
             {totalActive} ativos no Pinecone
           </span>
-          {totalStandby > 0 && (
-            <span className="files-count files-count-standby">
-              <span className="status-dot status-standby" />
-              {totalStandby} em standby
+          {totalDeleted > 0 && (
+            <span className="files-count files-count-deleted">
+              <span className="status-dot status-deleted" />
+              {totalDeleted} no histórico
             </span>
           )}
         </div>
@@ -148,30 +166,20 @@ export default function FilesView() {
           <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
             <h3>
               {confirmAction.type === "delete"
-                ? "⚠️ Excluir Permanentemente"
-                : confirmAction.type === "activate"
-                  ? "🔄 Reativar na Base de Treinamento"
-                  : "⏸️ Desativar da Base de Treinamento"}
+                ? "⚠️ Excluir da Base de Treinamento"
+                : "🗑️ Limpar do Histórico"}
             </h3>
             <p>
               {confirmAction.type === "delete"
-                ? `Tem certeza que deseja excluir "${confirmAction.filename}"? Esta ação é irreversível — o arquivo será removido do disco e do Pinecone.`
-                : confirmAction.type === "activate"
-                  ? `Reativar "${confirmAction.filename}" na base de treinamento? O arquivo será re-processado e seus vetores serão inseridos no Pinecone. Isso consome créditos da API de embeddings.`
-                  : `Desativar "${confirmAction.filename}" da base de treinamento? O arquivo será mantido no disco mas seus vetores serão removidos do Pinecone.`}
+                ? `Tem certeza que deseja excluir "${confirmAction.filename}" da base de treinamento? A IA deixará de conhecer este arquivo. O registro ficará no histórico de exclusões.`
+                : `Remover "${confirmAction.filename}" do histórico de exclusões?`}
             </p>
             <div className="confirm-actions">
               <button className="btn-cancel" onClick={() => setConfirmAction(null)}>
                 Cancelar
               </button>
               <button
-                className={
-                  confirmAction.type === "delete"
-                    ? "btn-danger"
-                    : confirmAction.type === "activate"
-                      ? "btn-success"
-                      : "btn-warning"
-                }
+                className={confirmAction.type === "delete" ? "btn-danger" : "btn-warning"}
                 onClick={() => handleAction(confirmAction.filename, confirmAction.type)}
                 disabled={actionLoading === confirmAction.filename}
               >
@@ -179,9 +187,7 @@ export default function FilesView() {
                   ? "Processando..."
                   : confirmAction.type === "delete"
                     ? "Excluir"
-                    : confirmAction.type === "activate"
-                      ? "Reativar"
-                      : "Desativar"}
+                    : "Limpar"}
               </button>
             </div>
           </div>
@@ -194,15 +200,51 @@ export default function FilesView() {
         <div className="files-columns">
           {CATEGORIES.map((cat) => {
             const catFiles = grouped[cat.key];
-            const total = catFiles.active.length + catFiles.standby.length;
+            const totalCat = catFiles.active.length + catFiles.deleted.length;
+            const isSearchOpen = searchOpen[cat.key];
 
             return (
               <div key={cat.key} className="files-column" data-category={cat.key}>
                 <div className="column-header" style={{ borderColor: cat.accentColor }}>
-                  <span className="column-icon">{cat.icon}</span>
-                  <span className="column-title">{cat.label}</span>
-                  <span className="column-count">{total}</span>
+                  <div className="column-header-left">
+                    <span className="column-icon">{cat.icon}</span>
+                    <span className="column-title">{cat.label}</span>
+                    <span className="column-count">{catFiles.active.length}</span>
+                  </div>
+                  <button
+                    className={`column-search-toggle ${isSearchOpen ? "active" : ""}`}
+                    onClick={() =>
+                      setSearchOpen((prev) => ({ ...prev, [cat.key]: !prev[cat.key] }))
+                    }
+                    title="Pesquisar"
+                  >
+                    🔍
+                  </button>
                 </div>
+
+                {isSearchOpen && (
+                  <div className="column-search">
+                    <input
+                      type="text"
+                      placeholder="Buscar arquivo..."
+                      value={searchTerms[cat.key]}
+                      onChange={(e) =>
+                        setSearchTerms((prev) => ({ ...prev, [cat.key]: e.target.value }))
+                      }
+                      autoFocus
+                    />
+                    {searchTerms[cat.key] && (
+                      <button
+                        className="search-clear"
+                        onClick={() =>
+                          setSearchTerms((prev) => ({ ...prev, [cat.key]: "" }))
+                        }
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="column-content">
                   {/* Active files */}
@@ -214,56 +256,37 @@ export default function FilesView() {
                       </div>
                       {catFiles.active.map((file) => (
                         <FileCard
-                          key={file.path}
+                          key={file.name}
                           file={file}
                           accentColor={cat.accentColor}
                           actionLoading={actionLoading}
-                          onStandby={() =>
-                            setConfirmAction({
-                              filename: file.name,
-                              type: "standby",
-                              currentStatus: "active",
-                            })
-                          }
                           onDelete={() =>
                             setConfirmAction({
                               filename: file.name,
                               type: "delete",
-                              currentStatus: "active",
                             })
                           }
-                          onActivate={undefined}
                         />
                       ))}
                     </div>
                   )}
 
-                  {/* Standby files */}
-                  {catFiles.standby.length > 0 && (
-                    <div className="column-section">
-                      <div className="section-label section-label-standby">
-                        <span className="status-dot status-standby" />
-                        Em Standby ({catFiles.standby.length})
+                  {/* Deletion history */}
+                  {catFiles.deleted.length > 0 && (
+                    <div className="column-section column-section-history">
+                      <div className="section-label section-label-deleted">
+                        <span className="status-dot status-deleted" />
+                        Histórico de Exclusão ({catFiles.deleted.length})
                       </div>
-                      {catFiles.standby.map((file) => (
-                        <FileCard
-                          key={file.path}
+                      {catFiles.deleted.map((file) => (
+                        <DeletedFileCard
+                          key={`deleted-${file.name}-${file.deleted_at}`}
                           file={file}
-                          accentColor={cat.accentColor}
                           actionLoading={actionLoading}
-                          onStandby={undefined}
-                          onDelete={() =>
+                          onClearHistory={() =>
                             setConfirmAction({
                               filename: file.name,
-                              type: "delete",
-                              currentStatus: "standby",
-                            })
-                          }
-                          onActivate={() =>
-                            setConfirmAction({
-                              filename: file.name,
-                              type: "activate",
-                              currentStatus: "standby",
+                              type: "clear_history",
                             })
                           }
                         />
@@ -271,7 +294,7 @@ export default function FilesView() {
                     </div>
                   )}
 
-                  {total === 0 && (
+                  {totalCat === 0 && (
                     <div className="column-empty">Nenhum arquivo</div>
                   )}
                 </div>
@@ -284,23 +307,19 @@ export default function FilesView() {
   );
 }
 
-/* ── File Card sub-component ── */
+/* ── Active File Card ── */
 
 interface FileCardProps {
   file: FileItem;
   accentColor: string;
   actionLoading: string | null;
-  onStandby: (() => void) | undefined;
-  onDelete: (() => void) | undefined;
-  onActivate: (() => void) | undefined;
+  onDelete: () => void;
 }
 
-function FileCard({ file, accentColor, actionLoading, onStandby, onDelete, onActivate }: FileCardProps) {
-  const isStandby = file.status === "standby";
-
+function FileCard({ file, accentColor, actionLoading, onDelete }: FileCardProps) {
   return (
     <div
-      className={`file-card-v2 ${isStandby ? "file-standby" : ""}`}
+      className="file-card-v2"
       style={{ "--file-accent": accentColor } as React.CSSProperties}
     >
       <div className="file-card-top">
@@ -314,41 +333,60 @@ function FileCard({ file, accentColor, actionLoading, onStandby, onDelete, onAct
             {file.modified ? ` • ${file.modified.slice(0, 10)}` : ""}
           </span>
         </div>
-        <span className={`file-status-badge ${isStandby ? "badge-standby" : "badge-active"}`}>
-          {isStandby ? "Standby" : "Ativo"}
-        </span>
+        <span className="file-status-badge badge-active">Ativo</span>
       </div>
       <div className="file-card-actions">
-        {onActivate && (
-          <button
-            className="btn-file-activate"
-            title="Reativar na base de treinamento"
-            onClick={onActivate}
-            disabled={actionLoading !== null}
-          >
-            ▶️ Ativar
-          </button>
-        )}
-        {onStandby && (
-          <button
-            className="btn-file-standby"
-            title="Desativar da base de treinamento"
-            onClick={onStandby}
-            disabled={actionLoading !== null}
-          >
-            ⏸️ Pausar
-          </button>
-        )}
-        {onDelete && (
-          <button
-            className="btn-file-delete"
-            title="Excluir permanentemente"
-            onClick={onDelete}
-            disabled={actionLoading !== null}
-          >
-            🗑️
-          </button>
-        )}
+        <button
+          className="btn-file-delete"
+          title="Excluir da base de treinamento"
+          onClick={onDelete}
+          disabled={actionLoading !== null}
+        >
+          🗑️ Excluir
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Deleted File Card (History) ── */
+
+interface DeletedFileCardProps {
+  file: FileItem;
+  actionLoading: string | null;
+  onClearHistory: () => void;
+}
+
+function DeletedFileCard({ file, actionLoading, onClearHistory }: DeletedFileCardProps) {
+  const deletedDate = file.deleted_at
+    ? new Date(file.deleted_at).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+
+  return (
+    <div className="file-card-deleted">
+      <div className="file-card-top">
+        <div className="file-card-info">
+          <span className="file-card-name file-card-name-deleted" title={file.name}>
+            {file.name}
+          </span>
+          <span className="file-card-meta">
+            {file.size_mb} MB
+            {file.vectors_count > 0 && ` • ${file.vectors_count} vetores removidos`}
+            {deletedDate && ` • excluído em ${deletedDate}`}
+          </span>
+        </div>
+        <button
+          className="btn-clear-history"
+          title="Remover do histórico"
+          onClick={onClearHistory}
+          disabled={actionLoading !== null}
+        >
+          ✕
+        </button>
       </div>
     </div>
   );

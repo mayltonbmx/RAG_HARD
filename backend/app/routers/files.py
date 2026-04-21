@@ -1,26 +1,23 @@
 """
 files.py — GET /api/files, DELETE /api/files/{filename},
-            PATCH /api/files/{filename}/standby,
-            PATCH /api/files/{filename}/activate
+            DELETE /api/files/{filename}/history
 Gerenciamento de arquivos de treinamento (requires Admin).
 
 Abordagem 100% Pinecone-first: a lista de arquivos vem EXCLUSIVAMENTE do Pinecone
 (fonte de verdade). Não depende de disco local nem GCS.
-Disco local é usado apenas como enriquecimento secundário (path, modified) quando
-disponível, e para a funcionalidade de re-ativação (activate).
 """
 
 import os
 import logging
-from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 
-from app.config import get_settings, SUPPORTED_EXTENSIONS
-from app.services.ingest import scan_directory, ingest_pdf_chunked, ingest_file_whole
+from app.config import get_settings
+from app.services.ingest import scan_directory
 from app.services.pinecone_db import (
     delete_by_filename,
+    delete_tombstone,
     get_indexed_files_metadata,
-    upsert_vectors,
+    insert_deletion_record,
 )
 from app.middleware.auth import require_admin_any
 
@@ -34,14 +31,12 @@ _deps = [Depends(require_admin_any)]
 async def list_files():
     """Lista arquivos — 100% Pinecone-first.
 
-    A lista vem inteiramente do Pinecone (fonte de verdade do que a IA conhece).
+    Retorna arquivos ativos (com vetores) e histórico de exclusão (tombstones).
     Disco local é consultado apenas para enriquecer com path/modified quando
     disponível, mas NÃO é necessário para que os arquivos apareçam.
-
-    Não depende de GCS, disco local, ou qualquer storage externo.
     """
     try:
-        # Fonte ÚNICA de verdade: Pinecone
+        # Fonte ÚNICA de verdade: Pinecone (ativos + histórico)
         pinecone_files = get_indexed_files_metadata()
 
         # Enriquecimento OPCIONAL: disco local (pode falhar sem impacto)
@@ -52,7 +47,7 @@ async def list_files():
         except Exception as e:
             logger.warning(f"Disk scan failed (not required): {e}")
 
-        # Constrói lista final — todos os arquivos vêm do Pinecone
+        # Constrói lista final
         merged = []
         for pf in pinecone_files:
             disk_info = disk_by_name.get(pf["name"], {})
@@ -63,9 +58,10 @@ async def list_files():
                 "mime_type": pf["mime_type"],
                 "size_mb": pf["size_mb"],
                 "modified": disk_info.get("modified", ""),
-                "status": "active",
+                "status": pf["status"],  # "active" ou "deleted"
                 "vectors_count": pf["vectors_count"],
                 "on_disk": pf["name"] in disk_by_name,
+                "deleted_at": pf.get("deleted_at", ""),
             }
             merged.append(entry)
 
@@ -75,81 +71,16 @@ async def list_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/files/{filename}/standby", dependencies=_deps)
-async def toggle_standby(filename: str):
-    """Desativa arquivo da base de treinamento (remove vetores no Pinecone).
-
-    Standby = remove vetores do Pinecone mas mantém arquivo no disco (se existir).
-    """
-    # Remove vetores do Pinecone
-    try:
-        deleted = delete_by_filename(filename)
-        if deleted == 0:
-            raise HTTPException(status_code=404, detail=f"Nenhum vetor encontrado para '{filename}' no Pinecone.")
-
-        logger.info(f"Standby: '{filename}' — {deleted} vetores removidos do Pinecone")
-        return {
-            "action": "standby",
-            "filename": filename,
-            "vectors_removed": deleted,
-            "message": f"Arquivo desativado da base de treinamento. {deleted} vetores removidos.",
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Standby error for {filename}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.patch("/files/{filename}/activate", dependencies=_deps)
-async def activate_file(filename: str):
-    """Reativa arquivo na base de treinamento (re-ingere vetores no Pinecone).
-
-    Lê o arquivo do disco e executa o pipeline de ingestão completo.
-    Requer que o arquivo exista no disco local.
-    """
-    settings = get_settings()
-
-    # Encontra o arquivo no disco
-    file_path = _find_file(settings.data_dir, filename)
-    if not file_path:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Arquivo '{filename}' não encontrado no disco. Para reativar, o arquivo precisa estar disponível localmente.",
-        )
-
-    ext = Path(file_path).suffix.lower()
-
-    if ext not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Tipo não suportado: {ext}")
-
-    mime = SUPPORTED_EXTENSIONS[ext]
-    size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
-
-    try:
-        # Re-ingerir o arquivo
-        if ext == ".pdf":
-            vectors = ingest_pdf_chunked(file_path, filename, size_mb)
-        else:
-            vectors = ingest_file_whole(file_path, filename, ext, mime, size_mb)
-
-        upsert_vectors(vectors)
-
-        logger.info(f"Activate: '{filename}' — {len(vectors)} vetores inseridos no Pinecone")
-        return {
-            "action": "activate",
-            "filename": filename,
-            "vectors_inserted": len(vectors),
-            "message": f"Arquivo reativado na base de treinamento. {len(vectors)} vetores inseridos.",
-        }
-    except Exception as e:
-        logger.error(f"Activate error for {filename}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.delete("/files/{filename}", dependencies=_deps)
 async def delete_file(filename: str):
-    """Exclui arquivo permanentemente (vetores do Pinecone + disco se existir)."""
+    """Exclui arquivo da base de treinamento.
+
+    Remove vetores do Pinecone e cria um tombstone para histórico.
+    Remove arquivo do disco se existir.
+    """
+    # Busca metadados do arquivo ANTES de excluir (para o tombstone)
+    all_files = get_indexed_files_metadata()
+    file_meta = next((f for f in all_files if f["name"] == filename and f["status"] == "active"), None)
 
     # Remove vetores do Pinecone
     try:
@@ -172,6 +103,19 @@ async def delete_file(filename: str):
     if deleted == 0 and not file_removed:
         raise HTTPException(status_code=404, detail=f"Arquivo '{filename}' não encontrado.")
 
+    # Cria tombstone para histórico de exclusão
+    if file_meta and deleted > 0:
+        try:
+            insert_deletion_record(
+                filename=filename,
+                extension=file_meta.get("extension", ""),
+                mime_type=file_meta.get("mime_type", ""),
+                size_mb=file_meta.get("size_mb", 0),
+                vectors_removed=deleted,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to insert tombstone for {filename}: {e}")
+
     logger.info(f"Deleted: '{filename}' — disco={'removido' if file_removed else 'não encontrado'}, {deleted} vetores removidos do Pinecone")
     return {
         "action": "delete",
@@ -180,6 +124,27 @@ async def delete_file(filename: str):
         "file_removed": file_removed,
         "message": f"Arquivo excluído. {deleted} vetores removidos." + (" Arquivo removido do disco." if file_removed else ""),
     }
+
+
+@router.delete("/files/{filename}/history", dependencies=_deps)
+async def clear_file_history(filename: str):
+    """Remove o registro de exclusão (tombstone) do histórico."""
+    try:
+        removed = delete_tombstone(filename)
+        if removed == 0:
+            raise HTTPException(status_code=404, detail=f"Nenhum registro de exclusão encontrado para '{filename}'.")
+
+        return {
+            "action": "clear_history",
+            "filename": filename,
+            "tombstones_removed": removed,
+            "message": f"Histórico de exclusão removido para '{filename}'.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Clear history error for {filename}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _find_file(data_dir: str, filename: str) -> str | None:

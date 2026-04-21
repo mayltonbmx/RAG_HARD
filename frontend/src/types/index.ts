@@ -31,9 +31,10 @@ export interface FileItem {
   mime_type: string;
   size_mb: number;
   modified: string;
-  status: "active" | "standby";
+  status: "active" | "deleted";
   vectors_count: number;
   on_disk: boolean;
+  deleted_at: string;
 }
 
 export interface StatsData {
