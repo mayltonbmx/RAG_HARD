@@ -1,4 +1,4 @@
-import { ChatRequest, ChatResponse, FileItem, StatsData, UploadResult } from "@/types";
+import { ChatRequest, ChatResponse, FileItem, Persona, StatsData, UploadResult } from "@/types";
 import { getSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
@@ -237,3 +237,42 @@ export async function clearFileHistory(filename: string): Promise<{ action: stri
   return request(`/api/files/${encodeURIComponent(filename)}/history`, { method: "DELETE" });
 }
 
+// Personas (Especialistas Virtuais)
+export async function getPersonas(): Promise<{ personas: Persona[] }> {
+  return request<{ personas: Persona[] }>("/api/personas");
+}
+
+export async function createPersona(data: Omit<Persona, "id">): Promise<Persona> {
+  return request<Persona>("/api/personas", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePersona(id: string, data: Partial<Persona>): Promise<Persona> {
+  return request<Persona>(`/api/personas/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePersona(id: string): Promise<{ detail: string }> {
+  return request<{ detail: string }>(`/api/personas/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+// ======================== File Personas ========================
+
+export async function updateFilePersonas(
+  filename: string,
+  personaIds: string[]
+): Promise<{ message: string; vectors_updated: number }> {
+  return request<{ message: string; vectors_updated: number }>(
+    `/api/files/${encodeURIComponent(filename)}/personas`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ persona_ids: personaIds }),
+    }
+  );
+}

@@ -10,6 +10,7 @@ Abordagem 100% Pinecone-first: a lista de arquivos vem EXCLUSIVAMENTE do Pinecon
 import os
 import logging
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 
 from app.config import get_settings
 from app.services.ingest import scan_directory
@@ -18,6 +19,7 @@ from app.services.pinecone_db import (
     delete_tombstone,
     get_indexed_files_metadata,
     insert_deletion_record,
+    update_file_personas,
 )
 from app.middleware.auth import require_admin_any
 
@@ -62,6 +64,7 @@ async def list_files():
                 "vectors_count": pf["vectors_count"],
                 "on_disk": pf["name"] in disk_by_name,
                 "deleted_at": pf.get("deleted_at", ""),
+                "allowed_personas": pf.get("allowed_personas", []),
             }
             merged.append(entry)
 
@@ -144,6 +147,36 @@ async def clear_file_history(filename: str):
         raise
     except Exception as e:
         logger.error(f"Clear history error for {filename}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class FilePersonasUpdate(BaseModel):
+    persona_ids: list[str]
+
+
+@router.put("/files/{filename}/personas", dependencies=_deps)
+async def set_file_personas(filename: str, body: FilePersonasUpdate):
+    """Define quais especialistas podem consultar este arquivo.
+
+    persona_ids vazio = todos os especialistas podem consultar.
+    """
+    try:
+        updated = update_file_personas(filename, body.persona_ids)
+        if updated == 0:
+            raise HTTPException(status_code=404, detail=f"Arquivo '{filename}' não encontrado no Pinecone.")
+
+        label = "todos" if not body.persona_ids else f"{len(body.persona_ids)} especialistas"
+        return {
+            "action": "update_personas",
+            "filename": filename,
+            "persona_ids": body.persona_ids,
+            "vectors_updated": updated,
+            "message": f"Permissões atualizadas: {label} podem consultar '{filename}'.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update personas error for {filename}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

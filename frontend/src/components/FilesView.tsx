@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { FileItem } from "@/types";
-import { getFiles, deleteFile, clearFileHistory } from "@/lib/api";
+import { FileItem, Persona } from "@/types";
+import { getFiles, deleteFile, clearFileHistory, getPersonas, updateFilePersonas } from "@/lib/api";
 
 type FileCategory = "documents" | "images" | "videos";
 
@@ -65,6 +65,10 @@ export default function FilesView() {
     videos: false,
   });
 
+  // Personas para os checkboxes
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+
   const fetchFiles = async () => {
     setLoading(true);
     setError("");
@@ -80,6 +84,9 @@ export default function FilesView() {
 
   useEffect(() => {
     fetchFiles();
+    getPersonas()
+      .then((data) => setPersonas(data.personas))
+      .catch(() => {}); // silently fail
   }, []);
 
   const handleAction = async (filename: string, type: "delete" | "clear_history") => {
@@ -96,6 +103,27 @@ export default function FilesView() {
       setError(err instanceof Error ? err.message : "Erro na operação");
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleTogglePersona = async (filename: string, personaId: string, currentAllowed: string[]) => {
+    const isAllowed = currentAllowed.includes(personaId);
+    const newAllowed = isAllowed
+      ? currentAllowed.filter((id) => id !== personaId)
+      : [...currentAllowed, personaId];
+
+    // Optimistic update
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.name === filename ? { ...f, allowed_personas: newAllowed } : f
+      )
+    );
+
+    try {
+      await updateFilePersonas(filename, newAllowed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar permissões");
+      await fetchFiles(); // rollback
     }
   };
 
@@ -260,6 +288,14 @@ export default function FilesView() {
                           file={file}
                           accentColor={cat.accentColor}
                           actionLoading={actionLoading}
+                          personas={personas}
+                          isExpanded={expandedFile === file.name}
+                          onToggleExpand={() =>
+                            setExpandedFile(expandedFile === file.name ? null : file.name)
+                          }
+                          onTogglePersona={(personaId) =>
+                            handleTogglePersona(file.name, personaId, file.allowed_personas || [])
+                          }
                           onDelete={() =>
                             setConfirmAction({
                               filename: file.name,
@@ -313,13 +349,29 @@ interface FileCardProps {
   file: FileItem;
   accentColor: string;
   actionLoading: string | null;
+  personas: Persona[];
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onTogglePersona: (personaId: string) => void;
   onDelete: () => void;
 }
 
-function FileCard({ file, accentColor, actionLoading, onDelete }: FileCardProps) {
+function FileCard({
+  file,
+  accentColor,
+  actionLoading,
+  personas,
+  isExpanded,
+  onToggleExpand,
+  onTogglePersona,
+  onDelete,
+}: FileCardProps) {
+  const allowed = file.allowed_personas || [];
+  const hasRestriction = allowed.length > 0;
+
   return (
     <div
-      className="file-card-v2"
+      className={`file-card-v2 ${isExpanded ? "expanded" : ""}`}
       style={{ "--file-accent": accentColor } as React.CSSProperties}
     >
       <div className="file-card-top">
@@ -337,6 +389,13 @@ function FileCard({ file, accentColor, actionLoading, onDelete }: FileCardProps)
       </div>
       <div className="file-card-actions">
         <button
+          className={`btn-file-personas ${hasRestriction ? "has-restriction" : ""}`}
+          title="Gerenciar acesso de especialistas"
+          onClick={onToggleExpand}
+        >
+          🧠 {hasRestriction ? `${allowed.length}` : "Todos"}
+        </button>
+        <button
           className="btn-file-delete"
           title="Excluir da base de treinamento"
           onClick={onDelete}
@@ -345,6 +404,45 @@ function FileCard({ file, accentColor, actionLoading, onDelete }: FileCardProps)
           🗑️ Excluir
         </button>
       </div>
+
+      {/* Persona Checkboxes */}
+      {isExpanded && personas.length > 0 && (
+        <div className="file-personas-panel">
+          <div className="file-personas-header">
+            <span>Quem pode consultar este arquivo?</span>
+            <span className="file-personas-hint">
+              {hasRestriction
+                ? `${allowed.length} de ${personas.length}`
+                : "Todos (sem restrição)"}
+            </span>
+          </div>
+          <div className="file-personas-list">
+            {personas.map((p) => (
+              <label
+                key={p.id}
+                className={`file-persona-checkbox ${
+                  allowed.includes(p.id) ? "checked" : ""
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={allowed.includes(p.id)}
+                  onChange={() => onTogglePersona(p.id)}
+                />
+                <span className="file-persona-avatar">
+                  {p.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="file-persona-name">{p.name}</span>
+              </label>
+            ))}
+          </div>
+          {hasRestriction && (
+            <p className="file-personas-warning">
+              ⚠️ Apenas os especialistas marcados poderão consultar este documento.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -391,3 +489,4 @@ function DeletedFileCard({ file, actionLoading, onClearHistory }: DeletedFileCar
     </div>
   );
 }
+

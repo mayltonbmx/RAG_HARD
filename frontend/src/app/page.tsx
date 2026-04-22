@@ -10,6 +10,7 @@ import StatsView from "@/components/StatsView";
 import UploadView from "@/components/UploadView";
 import FilesView from "@/components/FilesView";
 import AnalyticsView from "@/components/AnalyticsView";
+import PersonasView from "@/components/PersonasView";
 import AdminLoginScreen from "@/components/AdminLoginScreen";
 
 export default function Home() {
@@ -39,7 +40,7 @@ export default function Home() {
   };
 
   // Show admin login screen if trying to access admin views without auth
-  const needsAdminLogin = !isAdmin && ["analytics", "upload", "files"].includes(activeView);
+  const needsAdminLogin = !isAdmin && ["analytics", "upload", "files", "personas"].includes(activeView);
 
   return (
     <div className="app-layout">
@@ -60,6 +61,7 @@ export default function Home() {
         {activeView === "analytics" && isAdmin && <AnalyticsView />}
         {activeView === "upload" && isAdmin && <UploadView />}
         {activeView === "files" && isAdmin && <FilesView />}
+        {activeView === "personas" && isAdmin && <PersonasView />}
       </main>
     </div>
   );

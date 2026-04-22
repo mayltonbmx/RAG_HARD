@@ -15,6 +15,7 @@ export interface ChatRequest {
   message: string;
   history?: { role: string; content: string }[];
   top_k?: number;
+  persona_id?: string;
 }
 
 export interface ChatResponse {
@@ -35,6 +36,7 @@ export interface FileItem {
   vectors_count: number;
   on_disk: boolean;
   deleted_at: string;
+  allowed_personas: string[];
 }
 
 export interface StatsData {
@@ -50,4 +52,16 @@ export interface UploadResult {
   errors: { file: string; error: string }[];
 }
 
-export type ViewType = "chat" | "upload" | "files" | "stats" | "analytics";
+// Personas (Especialistas Virtuais)
+export interface Persona {
+  id: string;
+  name: string;
+  description: string;
+  identity: string;
+  rules: string[];
+  temperature: number;
+  access_level: "public" | "logged_in" | "admin";
+  is_default: boolean;
+}
+
+export type ViewType = "chat" | "upload" | "files" | "stats" | "analytics" | "personas";

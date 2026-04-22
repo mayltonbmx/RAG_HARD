@@ -26,6 +26,7 @@ async def chat_endpoint(req: ChatRequest):
             message=req.message,
             history=req.history,
             top_k=req.top_k,
+            persona_id=req.persona_id,
         )
         return ChatResponse(**result)
     except Exception as e:
@@ -43,6 +44,7 @@ async def chat_stream_endpoint(req: ChatRequest):
                 message=req.message,
                 history=req.history,
                 top_k=req.top_k,
+                persona_id=req.persona_id,
             ),
             media_type="text/event-stream",
             headers={

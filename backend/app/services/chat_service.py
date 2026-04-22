@@ -12,13 +12,16 @@ from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_l
 from app.config import get_settings
 from app.services.embeddings import embed_query
 from app.services.pinecone_db import search as pinecone_search
+from app.services.persona_service import get_persona, get_default_persona, build_system_prompt
 from app.services.analytics import log_chat_event
 
 logger = logging.getLogger(__name__)
 
 _client: genai.Client | None = None
 
-SYSTEM_PROMPT = """Voce é um vendedor técnico, especializado nos produtos da Hard. A Hard Produtos para Construção é uma empresa com mais de 40 anos de história, que produz e comercializa fixadores, selantes e outras linhas de produtos, com foco na qualidade e longa duração.
+# Fallback usado APENAS se o sistema de personas não estiver disponível.
+# Em operação normal, o prompt é montado dinamicamente via persona_service.
+_FALLBACK_SYSTEM_PROMPT = """Voce é um vendedor técnico, especializado nos produtos da Hard. A Hard Produtos para Construção é uma empresa com mais de 40 anos de história, que produz e comercializa fixadores, selantes e outras linhas de produtos, com foco na qualidade e longa duração.
 Devido a sua experiência você é um especialista admirado e tem o dom de ajudar a equipe a conhecer seus clientes para que eles atuem como um vendedor de vendas técnicas de alta performance.
 
 Voce tem acesso a trechos extraidos de documentos internos da empresa (catalogos, desenhos tecnicos, ebooks e folders).
@@ -37,6 +40,33 @@ Regras:
 -Não entregue toda o conteúdo em uma unica resposta, ofereça caminhos para o usuário, sobre aplicações, sobre especificações, algo conectado ao assunto.
 -Não esqueça que você também é um vendedor, então sugira o melhor produto para a situação e de insights de como a venda pode ser convertida com sucesso.
 """
+
+
+def _resolve_persona(persona_id: str | None) -> tuple[str, float]:
+    """Resolve persona_id em (system_prompt, temperature).
+
+    Fallback seguro: se persona não existir, usa o prompt original.
+    Isso garante que o deploy atual não quebre.
+    """
+    if persona_id:
+        persona = get_persona(persona_id)
+        if persona:
+            prompt = build_system_prompt(persona)
+            temp = persona.get("temperature", 0.5)
+            logger.info(f"Persona ativa: {persona['name']} (id={persona_id}, temp={temp})")
+            return prompt, temp
+        logger.warning(f"Persona '{persona_id}' não encontrada, usando fallback")
+
+    # Tenta persona padrão
+    default = get_default_persona()
+    if default:
+        prompt = build_system_prompt(default)
+        temp = default.get("temperature", 0.5)
+        logger.info(f"Persona padrão: {default['name']} (temp={temp})")
+        return prompt, temp
+
+    # Último recurso: prompt original hardcoded
+    return _FALLBACK_SYSTEM_PROMPT, 0.5
 
 
 def _get_client() -> genai.Client:
@@ -219,7 +249,7 @@ Exemplo: 0:8,1:3,2:9"""
     return results[:top_n]
 
 
-def _prepare_chat_context(message: str, history: list[dict] | None, top_k: int) -> dict:
+def _prepare_chat_context(message: str, history: list[dict] | None, top_k: int, persona_id: str | None = None) -> dict:
     """Prepara o contexto RAG: query rewriting, busca, re-ranking, histórico.
 
     Retorna dict com: contents, search_results, settings, rag_prompt
@@ -240,8 +270,25 @@ def _prepare_chat_context(message: str, history: list[dict] | None, top_k: int) 
 
     # 3. Busca chunks com query reescrita (busca mais para re-ranking)
     query_vector = embed_query(search_query)
-    search_results = pinecone_search(query_vector=query_vector, top_k=effective_top_k + 4, min_score=settings.min_score_threshold)
-    logger.info(f"Found {len(search_results)} chunks (intent={intent_info['intent']}, effective_top_k={effective_top_k})")
+
+    # Filtro de conhecimento por persona: só retorna chunks acessíveis
+    search_filter = None
+    if persona_id:
+        search_filter = {
+            "$or": [
+                {"allowed_personas": {"$exists": False}},   # arquivos sem restrição (legado)
+                {"allowed_personas": {"$size": 0}},         # lista vazia = todos
+                {"allowed_personas": {"$in": [persona_id]}}, # persona tem acesso
+            ]
+        }
+
+    search_results = pinecone_search(
+        query_vector=query_vector,
+        top_k=effective_top_k + 4,
+        min_score=settings.min_score_threshold,
+        filter_dict=search_filter,
+    )
+    logger.info(f"Found {len(search_results)} chunks (intent={intent_info['intent']}, effective_top_k={effective_top_k}, persona_filter={'yes' if persona_id else 'no'})")
 
     # 4. Re-ranking dos resultados
     search_results = _rerank_results(client, settings.generation_model, search_query, search_results, top_n=effective_top_k)
@@ -283,6 +330,9 @@ Responda utilizando as informacoes dos trechos. Nao cite fontes ou referencias a
 
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=rag_prompt)]))
 
+    # Resolve persona dinâmica
+    system_prompt, temperature = _resolve_persona(persona_id)
+
     return {
         "contents": contents,
         "search_results": search_results,
@@ -291,6 +341,8 @@ Responda utilizando as informacoes dos trechos. Nao cite fontes ou referencias a
         "search_query": search_query,
         "intent": intent_info["intent"],
         "start_time": time.perf_counter(),
+        "system_prompt": system_prompt,
+        "temperature": temperature,
     }
 
 
@@ -335,9 +387,9 @@ def _build_sources(search_results: list[dict]) -> list[dict]:
     return sources
 
 
-def chat(message: str, history: list[dict] | None = None, top_k: int = 8) -> dict:
+def chat(message: str, history: list[dict] | None = None, top_k: int = 8, persona_id: str | None = None) -> dict:
     """Processa mensagem usando RAG (resposta completa, sem streaming)."""
-    ctx = _prepare_chat_context(message, history, top_k)
+    ctx = _prepare_chat_context(message, history, top_k, persona_id=persona_id)
 
     # 8. Gera resposta (com retry para erros transientes)
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
@@ -347,8 +399,8 @@ def chat(message: str, history: list[dict] | None = None, top_k: int = 8) -> dic
             model=ctx["settings"].generation_model,
             contents=ctx["contents"],
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.5,
+                system_instruction=ctx["system_prompt"],
+                temperature=ctx["temperature"],
                 max_output_tokens=4096,
             ),
         )
@@ -381,7 +433,7 @@ def chat(message: str, history: list[dict] | None = None, top_k: int = 8) -> dic
 
 
 
-def chat_stream(message: str, history: list[dict] | None = None, top_k: int = 8):
+def chat_stream(message: str, history: list[dict] | None = None, top_k: int = 8, persona_id: str | None = None):
     """Generator que produz eventos SSE com tokens em tempo real.
 
     Fluxo:
@@ -389,7 +441,7 @@ def chat_stream(message: str, history: list[dict] | None = None, top_k: int = 8)
     2. Streama tokens da resposta do Gemini
     3. Envia evento [DONE] ao finalizar
     """
-    ctx = _prepare_chat_context(message, history, top_k)
+    ctx = _prepare_chat_context(message, history, top_k, persona_id=persona_id)
 
     # Envia sources como primeiro evento SSE
     sources = _build_sources(ctx["search_results"])
@@ -407,8 +459,8 @@ def chat_stream(message: str, history: list[dict] | None = None, top_k: int = 8)
             model=ctx["settings"].generation_model,
             contents=ctx["contents"],
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.5,
+                system_instruction=ctx["system_prompt"],
+                temperature=ctx["temperature"],
                 max_output_tokens=4096,
             ),
         )

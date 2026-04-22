@@ -26,6 +26,7 @@ export default function Sidebar({ activeView, onViewChange, onNewChat, isAdminLo
     { id: "analytics", label: "Analytics", icon: "📈", adminOnly: true },
     { id: "upload", label: "Upload", icon: "📤", adminOnly: true },
     { id: "files", label: "Arquivos", icon: "📂", adminOnly: true },
+    { id: "personas", label: "Especialistas", icon: "🧠", adminOnly: true },
   ];
 
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);

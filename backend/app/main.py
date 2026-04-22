@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.services.pinecone_db import init_index
-from app.routers import health, chat, search, upload, files, stats, analytics, admin_auth
+from app.routers import health, chat, search, upload, files, stats, analytics, admin_auth, personas
 from app.middleware.auth import azure_scheme
 
 # Logging
@@ -37,6 +37,10 @@ async def lifespan(app: FastAPI):
 
     # Init Pinecone index
     init_index()
+
+    # Init personas (cria defaults na primeira execução)
+    from app.services.persona_service import init_personas
+    init_personas()
 
     # Load Azure OIDC config (JWKS keys) if configured
     if azure_scheme is not None:
@@ -77,6 +81,7 @@ app.include_router(files.router)
 app.include_router(stats.router)
 app.include_router(analytics.router)
 app.include_router(admin_auth.router)
+app.include_router(personas.router)
 
 
 @app.get("/")

@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="Mensagem do usuario")
     history: list[dict] | None = Field(default=None, description="Historico da conversa")
     top_k: int = Field(default=8, ge=1, le=20, description="Chunks para recuperar")
+    persona_id: str | None = Field(default=None, description="ID do especialista virtual selecionado")
 
 
 class SourceItem(BaseModel):

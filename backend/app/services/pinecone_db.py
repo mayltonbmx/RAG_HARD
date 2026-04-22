@@ -244,9 +244,13 @@ def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
                     "vectors_count": 0,
                     "status": "active",
                     "source": "pinecone",
+                    "allowed_personas": meta.get("allowed_personas", []),
                 }
 
             active_files[fname]["vectors_count"] += 1
+            # Mantém allowed_personas do primeiro vetor com a info
+            if meta.get("allowed_personas") and not active_files[fname]["allowed_personas"]:
+                active_files[fname]["allowed_personas"] = meta["allowed_personas"]
 
         active = sorted(active_files.values(), key=lambda f: f["name"])
         deleted = sorted(deleted_files, key=lambda f: f.get("deleted_at", ""), reverse=True)
@@ -257,3 +261,42 @@ def get_indexed_files_metadata(namespace: str = "") -> list[dict]:
     except Exception as e:
         logger.error(f"Failed to get indexed files metadata: {e}")
         return []
+
+
+def update_file_personas(filename: str, persona_ids: list[str], namespace: str = "") -> int:
+    """Atualiza o campo allowed_personas em todos os vetores de um arquivo.
+
+    Args:
+        filename: Nome do arquivo
+        persona_ids: Lista de IDs de personas que podem acessar este arquivo.
+                     Lista vazia = acessível por todos (sem restrição).
+    """
+    index = _get_index()
+    settings = get_settings()
+
+    try:
+        results = index.query(
+            vector=[0.0] * settings.embedding_dimensions,
+            top_k=10000,
+            filter={"filename": {"$eq": filename}, "is_tombstone": {"$ne": True}},
+            include_metadata=True,
+            namespace=namespace,
+        )
+
+        if not results.matches:
+            logger.warning(f"No vectors found for file: {filename}")
+            return 0
+
+        updated = 0
+        for match in results.matches:
+            meta = match.metadata or {}
+            meta["allowed_personas"] = persona_ids
+            index.update(id=match.id, set_metadata=meta, namespace=namespace)
+            updated += 1
+
+        logger.info(f"Updated allowed_personas for '{filename}': {len(persona_ids)} personas, {updated} vectors")
+        return updated
+
+    except Exception as e:
+        logger.error(f"Failed to update personas for {filename}: {e}")
+        raise
