@@ -107,19 +107,23 @@ export default function FilesView() {
   };
 
   const handleTogglePersona = async (filename: string, personaId: string, currentAllowed: string[]) => {
-    const isAllowed = currentAllowed.includes(personaId);
+    // Filtrar sentinel "all" — trabalhar apenas com IDs reais
+    const realAllowed = currentAllowed.filter((id) => id !== "all");
+    const isAllowed = realAllowed.includes(personaId);
     const newAllowed = isAllowed
-      ? currentAllowed.filter((id) => id !== personaId)
-      : [...currentAllowed, personaId];
+      ? realAllowed.filter((id) => id !== personaId)
+      : [...realAllowed, personaId];
 
-    // Optimistic update
+    // Optimistic update: se vazio, mostrar ["all"] na UI
+    const optimisticValue = newAllowed.length === 0 ? ["all"] : newAllowed;
     setFiles((prev) =>
       prev.map((f) =>
-        f.name === filename ? { ...f, allowed_personas: newAllowed } : f
+        f.name === filename ? { ...f, allowed_personas: optimisticValue } : f
       )
     );
 
     try {
+      // Enviar lista real (vazio = backend converte em ["all"])
       await updateFilePersonas(filename, newAllowed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao atualizar permissões");
@@ -366,7 +370,9 @@ function FileCard({
   onTogglePersona,
   onDelete,
 }: FileCardProps) {
-  const allowed = file.allowed_personas || [];
+  // Filtrar sentinel "all" para a UI — mostrar apenas IDs reais de personas
+  const rawAllowed = file.allowed_personas || [];
+  const allowed = rawAllowed.filter((id) => id !== "all");
   const hasRestriction = allowed.length > 0;
 
   return (

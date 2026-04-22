@@ -271,16 +271,14 @@ def _prepare_chat_context(message: str, history: list[dict] | None, top_k: int, 
     # 3. Busca chunks com query reescrita (busca mais para re-ranking)
     query_vector = embed_query(search_query)
 
-    # Filtro de conhecimento por persona: só retorna chunks acessíveis
+    # Filtro de conhecimento por persona:
+    # Todos os vetores agora possuem "allowed_personas" no metadata.
+    # Default: ["all"] = todos os especialistas acessam.
+    # Quando o admin restringe: ["vendedor-tecnico", "engenheiro"] = só esses.
+    # O filtro usa $in para buscar persona_id OU "all".
     search_filter = None
     if persona_id:
-        search_filter = {
-            "$or": [
-                {"allowed_personas": {"$exists": False}},   # arquivos sem restrição (legado)
-                {"allowed_personas": {"$size": 0}},         # lista vazia = todos
-                {"allowed_personas": {"$in": [persona_id]}}, # persona tem acesso
-            ]
-        }
+        search_filter = {"allowed_personas": {"$in": [persona_id, "all"]}}
 
     search_results = pinecone_search(
         query_vector=query_vector,
@@ -288,7 +286,7 @@ def _prepare_chat_context(message: str, history: list[dict] | None, top_k: int, 
         min_score=settings.min_score_threshold,
         filter_dict=search_filter,
     )
-    logger.info(f"Found {len(search_results)} chunks (intent={intent_info['intent']}, effective_top_k={effective_top_k}, persona_filter={'yes' if persona_id else 'no'})")
+    logger.info(f"Found {len(search_results)} chunks (intent={intent_info['intent']}, effective_top_k={effective_top_k}, persona_filter={'active' if search_filter else 'off'})")
 
     # 4. Re-ranking dos resultados
     search_results = _rerank_results(client, settings.generation_model, search_query, search_results, top_n=effective_top_k)

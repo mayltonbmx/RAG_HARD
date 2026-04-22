@@ -63,6 +63,7 @@ def ingest_pdf_chunked(filepath: str, filename: str, size_mb: float) -> list[dic
                 "size_mb": size_mb, "type_label": "PDF",
                 "content_type": "file_embedding",
                 "text": f"[PDF sem texto: {filename}]",
+                "allowed_personas": ["all"],
             },
         }]
 
@@ -78,6 +79,7 @@ def ingest_pdf_chunked(filepath: str, filename: str, size_mb: float) -> list[dic
                 "size_mb": size_mb, "type_label": "PDF",
                 "content_type": "file_embedding",
                 "text": f"[PDF com pouco texto: {filename}]",
+                "allowed_personas": ["all"],
             },
         }]
 
@@ -108,6 +110,7 @@ def ingest_pdf_chunked(filepath: str, filename: str, size_mb: float) -> list[dic
                 "page_end": chunk["page_end"],
                 "word_count": chunk["word_count"],
                 "text": text_for_meta,
+                "allowed_personas": ["all"],
             },
         })
 
@@ -125,5 +128,6 @@ def ingest_file_whole(filepath: str, filename: str, ext: str, mime: str, size_mb
             "file_type": ext, "mime_type": mime,
             "size_mb": size_mb, "content_type": "file_embedding",
             "text": f"[{ext.upper().replace('.', '')} file: {filename}]",
+            "allowed_personas": ["all"],
         },
     }]

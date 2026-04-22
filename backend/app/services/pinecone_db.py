@@ -288,13 +288,18 @@ def update_file_personas(filename: str, persona_ids: list[str], namespace: str =
             return 0
 
         updated = 0
+        # Se nenhum persona marcado, usar sentinel "all" (sem restrição)
+        effective_personas = persona_ids if persona_ids else ["all"]
         for match in results.matches:
-            meta = match.metadata or {}
-            meta["allowed_personas"] = persona_ids
-            index.update(id=match.id, set_metadata=meta, namespace=namespace)
+            index.update(
+                id=match.id,
+                set_metadata={"allowed_personas": effective_personas},
+                namespace=namespace,
+            )
             updated += 1
 
-        logger.info(f"Updated allowed_personas for '{filename}': {len(persona_ids)} personas, {updated} vectors")
+        label = "all (sem restrição)" if not persona_ids else f"{len(persona_ids)} personas"
+        logger.info(f"Updated allowed_personas for '{filename}': {label}, {updated} vectors")
         return updated
 
     except Exception as e:
