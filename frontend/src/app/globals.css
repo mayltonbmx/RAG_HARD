@@ -2211,6 +2211,24 @@ body {
   background: rgba(99, 102, 241, 0.12);
 }
 
+.persona-dropdown-item.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.persona-dropdown-item.locked:hover {
+  background: transparent;
+}
+
+.persona-dropdown-item.locked .dropdown-avatar {
+  background: linear-gradient(135deg, #374151, #4b5563);
+}
+
+.dropdown-lock {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
 .dropdown-avatar {
   width: 36px;
   height: 36px;

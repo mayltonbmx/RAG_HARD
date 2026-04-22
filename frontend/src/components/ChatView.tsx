@@ -11,7 +11,11 @@ interface ChatMsg extends ChatMessage {
   personaSwitch?: string; // marca quando houve troca de persona
 }
 
-export default function ChatView() {
+interface ChatViewProps {
+  isLoggedIn?: boolean;
+}
+
+export default function ChatView({ isLoggedIn = false }: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -29,9 +33,13 @@ export default function ChatView() {
     getPersonas()
       .then((data) => {
         setPersonas(data.personas);
-        const defaultP = data.personas.find((p) => p.is_default);
+        // Selecionar default apenas entre personas acessíveis
+        const accessible = data.personas.filter(
+          (p) => p.access_level === "public" || isLoggedIn
+        );
+        const defaultP = accessible.find((p) => p.is_default);
         if (defaultP) setSelectedPersona(defaultP.id);
-        else if (data.personas.length > 0) setSelectedPersona(data.personas[0].id);
+        else if (accessible.length > 0) setSelectedPersona(accessible[0].id);
       })
       .catch(() => {
         // Silently fail — chat still works without persona selector
@@ -59,6 +67,11 @@ export default function ChatView() {
 
   const currentPersona = personas.find((p) => p.id === selectedPersona);
 
+  function isPersonaAccessible(persona: Persona): boolean {
+    if (isLoggedIn) return true;
+    return persona.access_level === "public";
+  }
+
   function handlePersonaChange(personaId: string) {
     if (personaId === selectedPersona) {
       setSelectorOpen(false);
@@ -66,6 +79,7 @@ export default function ChatView() {
     }
 
     const newPersona = personas.find((p) => p.id === personaId);
+    if (newPersona && !isPersonaAccessible(newPersona)) return; // bloqueado
     setSelectedPersona(personaId);
     setSelectorOpen(false);
 
@@ -252,20 +266,25 @@ export default function ChatView() {
 
             {selectorOpen && (
               <div className="persona-dropdown">
-                {personas.map((p) => (
-                  <button
-                    key={p.id}
-                    className={`persona-dropdown-item ${p.id === selectedPersona ? "active" : ""}`}
-                    onClick={() => handlePersonaChange(p.id)}
-                  >
-                    <span className="dropdown-avatar">{p.name.charAt(0).toUpperCase()}</span>
-                    <div className="dropdown-info">
-                      <span className="dropdown-name">{p.name}</span>
-                      <span className="dropdown-desc">{p.description}</span>
-                    </div>
-                    {p.id === selectedPersona && <span className="dropdown-check">✓</span>}
-                  </button>
-                ))}
+                {personas.map((p) => {
+                  const accessible = isPersonaAccessible(p);
+                  return (
+                    <button
+                      key={p.id}
+                      className={`persona-dropdown-item ${p.id === selectedPersona ? "active" : ""} ${!accessible ? "locked" : ""}`}
+                      onClick={() => accessible && handlePersonaChange(p.id)}
+                      disabled={!accessible}
+                    >
+                      <span className="dropdown-avatar">{p.name.charAt(0).toUpperCase()}</span>
+                      <div className="dropdown-info">
+                        <span className="dropdown-name">{p.name}</span>
+                        <span className="dropdown-desc">{p.description}</span>
+                      </div>
+                      {!accessible && <span className="dropdown-lock">🔒</span>}
+                      {accessible && p.id === selectedPersona && <span className="dropdown-check">✓</span>}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

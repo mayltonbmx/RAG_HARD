@@ -55,7 +55,7 @@ export default function Home() {
         onAdminLogout={handleAdminLogout}
       />
       <main className="main-content">
-        {activeView === "chat" && <ChatView />}
+        {activeView === "chat" && <ChatView isLoggedIn={isAdmin} />}
         {activeView === "stats" && <StatsView />}
         {needsAdminLogin && <AdminLoginScreen onLoginSuccess={handleAdminLoginSuccess} />}
         {activeView === "analytics" && isAdmin && <AnalyticsView />}
