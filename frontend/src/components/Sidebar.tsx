@@ -1,9 +1,8 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useAuth } from "./AuthProvider";
 import { ViewType } from "@/types";
 import { adminLogout, getAdminToken } from "@/lib/api";
-import { useState, useEffect } from "react";
 
 interface SidebarProps {
   activeView: ViewType;
@@ -14,10 +13,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeView, onViewChange, onNewChat, isAdminLoggedIn, onAdminLogout }: SidebarProps) {
-  const { data: session } = useSession();
+  const { user, signOut } = useAuth();
 
-  const azureRoles: string[] = session?.roles ?? [];
-  const isAdmin = azureRoles.includes("Admin") || isAdminLoggedIn;
+  const isAdmin = isAdminLoggedIn;
 
   // Build nav items based on role
   const navItems: { id: ViewType; label: string; icon: string; adminOnly?: boolean }[] = [
@@ -31,37 +29,35 @@ export default function Sidebar({ activeView, onViewChange, onNewChat, isAdminLo
 
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
-  const handleLogout = () => {
-    if (session?.user) {
-      signOut({ callbackUrl: "/login" });
-    } else if (isAdminLoggedIn) {
+  const handleLogout = async () => {
+    if (isAdminLoggedIn) {
       adminLogout();
       onAdminLogout();
     }
+    // Always sign out from Supabase
+    await signOut();
   };
+
+  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
 
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
         <div className="brand-icon">⬡</div>
         <div className="brand-text">
-          <span className="brand-name">Hard Educação</span>
-          <span className="brand-sub">CHAT INTELIGENTE</span>
+          <span className="brand-name">FonteCerta</span>
+          <span className="brand-sub">CHAT ESPECIALISTA</span>
         </div>
       </div>
 
       {/* User info */}
-      {(session?.user || isAdminLoggedIn) && (
+      {user && (
         <div className="sidebar-user">
           <div className="user-avatar">
-            {session?.user?.image ? (
-              <img src={session.user.image} alt="" className="user-avatar-img" />
-            ) : (
-              <span>{isAdminLoggedIn ? "A" : session?.user?.name?.charAt(0)?.toUpperCase() || "?"}</span>
-            )}
+            <span>{isAdminLoggedIn ? "A" : displayName.charAt(0).toUpperCase()}</span>
           </div>
           <div className="user-info">
-            <span className="user-name">{isAdminLoggedIn ? "Administrador" : session?.user?.name}</span>
+            <span className="user-name">{isAdminLoggedIn ? "Administrador" : displayName}</span>
             <span className="user-role">{isAdmin ? "Admin" : "Usuário"}</span>
           </div>
         </div>
@@ -86,17 +82,15 @@ export default function Sidebar({ activeView, onViewChange, onNewChat, isAdminLo
           + Nova Conversa
         </button>
 
-        {!isAdmin && !session?.user && (
+        {!isAdmin && (
           <button className="btn-admin-access" onClick={() => onViewChange("analytics")}>
             🔐 Acesso Admin
           </button>
         )}
 
-        {(session?.user || isAdminLoggedIn) && (
-          <button className="btn-logout" onClick={handleLogout}>
-            ↪ Sair
-          </button>
-        )}
+        <button className="btn-logout" onClick={handleLogout}>
+          ↪ Sair
+        </button>
 
         <div className="tech-badges">
           <div className="tech-badge">

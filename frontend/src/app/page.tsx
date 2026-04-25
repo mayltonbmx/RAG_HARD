@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
 import { ViewType } from "@/types";
 import { getAdminToken } from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
@@ -15,7 +14,6 @@ import AdminLoginScreen from "@/components/AdminLoginScreen";
 
 export default function Home() {
   const [activeView, setActiveView] = useState<ViewType>("chat");
-  const { data: session } = useSession();
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
 
   // Check for existing admin JWT on mount
@@ -26,8 +24,7 @@ export default function Home() {
     }
   }, []);
 
-  const azureRoles: string[] = session?.roles ?? [];
-  const isAdmin = azureRoles.includes("Admin") || isAdminLoggedIn;
+  const isAdmin = isAdminLoggedIn;
 
   const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);

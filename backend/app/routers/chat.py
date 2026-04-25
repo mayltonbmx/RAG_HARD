@@ -1,24 +1,19 @@
 """
-chat.py — POST /api/chat — RAG Chat endpoint (requires authentication).
+chat.py — POST /api/chat — RAG Chat endpoint.
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.schemas.models import ChatRequest, ChatResponse
 from app.services.chat_service import chat as rag_chat, chat_stream as rag_chat_stream
-from app.middleware.auth import azure_scheme, verify_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
-# Build dependencies list: include azure_scheme only if configured
-_deps = [Depends(azure_scheme)] if azure_scheme else []
-
-
-@router.post("/chat", response_model=ChatResponse, dependencies=_deps)
+@router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
     try:
         logger.info(f"Chat: '{req.message[:60]}...'")
@@ -34,7 +29,7 @@ async def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/chat/stream", dependencies=_deps)
+@router.post("/chat/stream")
 async def chat_stream_endpoint(req: ChatRequest):
     """Endpoint SSE para streaming de resposta em tempo real."""
     try:
@@ -56,4 +51,3 @@ async def chat_stream_endpoint(req: ChatRequest):
     except Exception as e:
         logger.error(f"Chat stream error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

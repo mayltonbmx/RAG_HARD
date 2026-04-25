@@ -15,7 +15,7 @@ from app.middleware.auth import require_admin_any
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["upload"])
 
-# Admin-only: require admin login (Azure or generic JWT)
+# Admin-only: require admin login (JWT genérico)
 _deps = [Depends(require_admin_any)]
 
 

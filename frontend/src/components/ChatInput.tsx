@@ -34,7 +34,7 @@ export default function ChatInput({ value, onChange, onSend, disabled }: ChatInp
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Pergunte sobre os produtos Hard..."
+          placeholder="Faça sua pergunta ao especialista..."
           rows={1}
           disabled={disabled}
         />

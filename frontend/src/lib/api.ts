@@ -1,23 +1,16 @@
 import { ChatRequest, ChatResponse, FileItem, Persona, StatsData, UploadResult } from "@/types";
-import { getSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 /**
- * Get the access token from the current session.
- * Checks Azure session first, then admin JWT from localStorage.
+ * Get the access token for API requests.
+ * Uses admin JWT from localStorage.
  */
-async function getAccessToken(): Promise<string | undefined> {
-  // Try Azure session first
-  const session = await getSession();
-  if (session?.accessToken) return session.accessToken;
-
-  // Fallback to admin JWT
+function getAccessTokenSync(): string | undefined {
   if (typeof window !== "undefined") {
     const adminToken = localStorage.getItem("admin_token");
     if (adminToken) return adminToken;
   }
-
   return undefined;
 }
 
@@ -26,7 +19,7 @@ async function getAccessToken(): Promise<string | undefined> {
  * Automatically includes Bearer token if available.
  */
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = await getAccessToken();
+  const token = getAccessTokenSync();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -73,7 +66,7 @@ export interface StreamCallbacks {
 }
 
 export async function sendChatStream(data: ChatRequest, callbacks: StreamCallbacks): Promise<void> {
-  const token = await getAccessToken();
+  const token = getAccessTokenSync();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -139,7 +132,7 @@ export async function getStats(): Promise<StatsData> {
 }
 
 export async function uploadFiles(files: FileList): Promise<UploadResult> {
-  const token = await getAccessToken();
+  const token = getAccessTokenSync();
   const formData = new FormData();
   for (const file of Array.from(files)) {
     formData.append("files", file);

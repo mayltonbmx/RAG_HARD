@@ -3,8 +3,8 @@ import AuthProvider from "@/components/AuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hard Educação — Chat Inteligente",
-  description: "Chat inteligente com IA para consulta de catálogos, desenhos técnicos e produtos Hard. Desenvolvido por Maylton Tavares.",
+  title: "FonteCerta — Chat Especialista",
+  description: "Chat especialista com IA para consulta de bases de conhecimento, documentos e conteúdos técnicos. Desenvolvido por Maylton Tavares.",
   authors: [{ name: "Maylton Tavares" }],
 };
 

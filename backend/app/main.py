@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.services.pinecone_db import init_index
 from app.routers import health, chat, search, upload, files, stats, analytics, admin_auth, personas
-from app.middleware.auth import azure_scheme
 
 # Logging
 logging.basicConfig(
@@ -19,21 +18,20 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("rag-hard")
+logger = logging.getLogger("fontecerta")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
     logger.info("=" * 50)
-    logger.info("Hard Educação — Backend v2.5")
+    logger.info("FonteCerta — Backend v3.0")
     logger.info("=" * 50)
 
     settings = get_settings()
     logger.info(f"Embedding model: {settings.embedding_model}")
     logger.info(f"Generation model: {settings.generation_model}")
     logger.info(f"CORS origins: {settings.cors_origins}")
-    logger.info(f"Azure auth: {'ENABLED' if settings.azure_configured else 'DISABLED'}")
 
     # Init Pinecone index
     init_index()
@@ -41,11 +39,6 @@ async def lifespan(app: FastAPI):
     # Init personas (cria defaults na primeira execução)
     from app.services.persona_service import init_personas
     init_personas()
-
-    # Load Azure OIDC config (JWKS keys) if configured
-    if azure_scheme is not None:
-        await azure_scheme.openid_config.load_config()
-        logger.info("Azure OIDC config loaded successfully")
 
     logger.info("Startup complete")
 
@@ -56,9 +49,9 @@ async def lifespan(app: FastAPI):
 
 # Create app
 app = FastAPI(
-    title="Hard Educação API",
+    title="FonteCerta API",
     description="API de chat RAG com Gemini + Pinecone — Desenvolvido por Maylton Tavares",
-    version="2.5.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -87,8 +80,8 @@ app.include_router(personas.router)
 @app.get("/")
 async def root():
     return {
-        "name": "Hard Educação API",
-        "version": "2.5.0",
-        "auth": "Azure Entra ID" if settings.azure_configured else "disabled",
+        "name": "FonteCerta API",
+        "version": "3.0.0",
+        "auth": "JWT (admin)",
         "docs": "/docs",
     }
