@@ -3,11 +3,12 @@
   <img src="https://img.shields.io/badge/Pinecone-000000?style=for-the-badge&logo=pinecone&logoColor=white" alt="Pinecone"/>
   <img src="https://img.shields.io/badge/Next.js_16-000000?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js"/>
   <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/>
+  <img src="https://img.shields.io/badge/Supabase-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase"/>
   <img src="https://img.shields.io/badge/Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white" alt="Cloud Run"/>
   <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel"/>
 </p>
 
-<h1 align="center">🧠 Hard Educação — Plataforma de Especialistas Virtuais</h1>
+<h1 align="center">⬡ FonteCerta — Plataforma de Especialistas Virtuais</h1>
 
 <p align="center">
   <strong>Assistente de IA multi-persona com RAG, controle de acesso a conhecimento e arquitetura serverless.</strong>
@@ -21,7 +22,7 @@
 
 ## 🏗️ Visão Geral
 
-O **Hard Educação** é uma plataforma de inteligência artificial que transforma documentos técnicos da empresa em conhecimento acessível por meio de **especialistas virtuais com personalidades distintas**. Cada especialista possui identidade, regras de comportamento e acesso controlado a documentos específicos — tudo gerenciado por um painel administrativo.
+O **FonteCerta** é uma plataforma de inteligência artificial que transforma documentos em conhecimento acessível por meio de **especialistas virtuais com personalidades distintas**. Cada especialista possui identidade, regras de comportamento e acesso controlado a documentos específicos — tudo gerenciado por um painel administrativo.
 
 ### O que o sistema faz:
 
@@ -50,8 +51,10 @@ O diferencial do sistema é a **Plataforma de Especialistas Virtuais** — cada 
 | Persona | Foco | Temp. |
 |---------|------|-------|
 | 🟢 **Vendedor Técnico** | Vendas consultivas, abordagem comercial, conversão | 0.5 |
-| 🔵 **Engenheiro de Aplicação** | Especificações, normas ABNT/ISO, dados técnicos | 0.2 |
+| 🟥 **Engenheiro de Aplicação** | Especificações, normas ABNT/ISO, dados técnicos | 0.2 |
 | 🟡 **Treinadora Comercial** | Capacitação de equipe, simulação de objeções, didática | 0.6 |
+
+> ⚠️ **Nota:** Estes são exemplos de fábrica. As personas são totalmente configuráveis pelo admin.
 
 ---
 
@@ -134,7 +137,8 @@ Resultado: cada especialista vê **apenas os documentos autorizados**, sem afeta
 | **Next.js 16** | Framework React com SSR |
 | **React 19** | UI reativa com hooks |
 | **TypeScript** | Tipagem estática completa |
-| **CSS Glassmorphism** | UI dark premium com glassmorphism e micro-animações |
+| **CSS Light Corporate** | UI corporativa clara com design system limpo |
+| **Supabase Auth** | Autenticação de usuários (email/senha + registro) |
 
 ### Infraestrutura
 | Serviço | Função |
@@ -208,6 +212,8 @@ npm install
 
 # Configure o .env.local
 echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co" >> .env.local
+echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ..." >> .env.local
 
 npm run dev
 ```
@@ -233,6 +239,8 @@ npm run dev
 | Variável | Descrição |
 |----------|-----------|
 | `NEXT_PUBLIC_API_URL` | URL do backend |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave pública anon do Supabase |
 
 ---
 
@@ -262,7 +270,7 @@ RAG_HARD/
 │   │   ├── config.py               # Settings centralizadas (Pydantic)
 │   │   ├── main.py                 # FastAPI app + startup
 │   │   ├── middleware/
-│   │   │   └── auth.py             # JWT + Azure AD (opcional)
+│   │   │   └── auth.py             # JWT admin auth
 │   │   ├── routers/
 │   │   │   ├── admin_auth.py       # Login admin
 │   │   │   ├── analytics.py        # Métricas de uso
@@ -286,19 +294,25 @@ RAG_HARD/
 └── frontend/
     └── src/
         ├── app/
-        │   ├── globals.css          # Design system (glassmorphism dark)
-        │   └── page.tsx             # Roteamento principal
-        ├── components/
-        │   ├── ChatView.tsx         # Chat + seletor de persona
-        │   ├── FilesView.tsx        # Gestão de arquivos + checkboxes 🧠
-        │   ├── PersonasView.tsx     # Galeria + editor de especialistas
-        │   ├── AnalyticsView.tsx    # Dashboard de métricas
-        │   ├── UploadView.tsx       # Upload com drag & drop
-        │   └── Sidebar.tsx          # Navegação com roles
-        ├── lib/
-        │   └── api.ts              # API client tipado
-        └── types/
-            └── index.ts            # TypeScript interfaces
+           ├── globals.css          # Design system (light corporate)
+        ├── login/
+        │   └── page.tsx         # Página de login
+        └── page.tsx             # Roteamento principal
+    ├── components/
+    │   ├── AuthProvider.tsx  # Supabase auth context
+    │   ├── LoginScreen.tsx  # Login/cadastro/reset
+    │   ├── ChatView.tsx     # Chat + seletor de persona
+    │   ├── FilesView.tsx    # Gestão de arquivos + checkboxes 🧠
+    │   ├── PersonasView.tsx # Galeria + editor de especialistas
+    │   ├── AnalyticsView.tsx # Dashboard de métricas
+    │   ├── UploadView.tsx   # Upload com drag & drop
+    │   └── Sidebar.tsx      # Navegação com roles
+    ├── lib/
+    │   ├── api.ts           # API client tipado
+    │   ├── supabase-browser.ts # Supabase client (browser)
+    │   └── supabase-server.ts  # Supabase client (server)
+    └── types/
+        └── index.ts         # TypeScript interfaces
 ```
 
 ---
