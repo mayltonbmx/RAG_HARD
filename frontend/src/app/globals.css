@@ -511,34 +511,30 @@ body {
 .btn-login-primary:active { transform: translateY(0); }
 .btn-login-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-/* OTP Inputs */
-.otp-inputs {
-  display: flex; justify-content: center; gap: 10px;
-}
-.otp-input {
-  width: 48px; height: 56px; text-align: center;
-  font-size: 1.4rem; font-weight: 700; letter-spacing: 0;
-  background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md); color: var(--text-primary);
-  font-family: inherit; outline: none; transition: all 0.2s ease;
-  caret-color: var(--accent-primary);
-}
-.otp-input:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 20px rgba(11, 31, 58, 0.2);
+/* Login form extras */
+.login-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 
-.otp-actions {
-  display: flex; flex-direction: column; gap: 8px; align-items: center;
+.login-success {
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  background: rgba(46, 125, 50, 0.1); color: var(--success);
+  border: 1px solid rgba(46, 125, 50, 0.2);
+  font-size: 0.85rem; text-align: center;
 }
-.btn-resend, .btn-back {
+
+.login-links {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 4px;
+}
+
+.btn-link {
   background: none; border: none; color: var(--text-muted);
   font-family: inherit; font-size: 0.82rem; font-weight: 500;
   cursor: pointer; transition: color 0.2s ease;
-  padding: 4px 8px;
+  padding: 4px 0;
 }
-.btn-resend:hover, .btn-back:hover { color: var(--accent-primary); }
-.btn-resend:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-link:hover { color: var(--accent-primary); }
 
 .login-footer {
   margin-top: 32px; font-size: 0.72rem; color: var(--text-muted);

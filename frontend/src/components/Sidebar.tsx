@@ -38,7 +38,7 @@ export default function Sidebar({ activeView, onViewChange, onNewChat, isAdminLo
     await signOut();
   };
 
-  const displayName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário";
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.first_name || user?.email?.split("@")[0] || "Usuário";
 
   return (
     <aside className="sidebar">
