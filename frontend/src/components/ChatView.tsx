@@ -280,8 +280,9 @@ export default function ChatView({ isLoggedIn = false }: ChatViewProps) {
                         <span className="dropdown-name">{p.name}</span>
                         <span className="dropdown-desc">{p.description}</span>
                       </div>
-                      {!accessible && <span className="dropdown-lock">🔒</span>}
+                      {!accessible && <span className="dropdown-lock">🔒<small>Assinantes</small></span>}
                       {accessible && p.id === selectedPersona && <span className="dropdown-check">✓</span>}
+                      {accessible && p.access_level === "public" && p.id !== selectedPersona && <span className="dropdown-badge free">Free</span>}
                     </button>
                   );
                 })}
