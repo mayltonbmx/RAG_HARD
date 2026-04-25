@@ -5,9 +5,8 @@ import { Persona } from "@/types";
 import { getPersonas, createPersona, updatePersona, deletePersona } from "@/lib/api";
 
 const ACCESS_LABELS: Record<string, string> = {
-  public: "🌐 Público",
-  logged_in: "🔑 Logados",
-  admin: "🛡️ Admin",
+  public: "🌐 Free",
+  logged_in: "🔑 Assinantes",
 };
 
 const TEMP_LABELS = [
@@ -247,7 +246,7 @@ export default function PersonasView() {
               <div className="editor-row">
                 <label>Nível de Acesso</label>
                 <div className="access-selector">
-                  {(["public", "logged_in", "admin"] as const).map((level) => (
+                  {(["public", "logged_in"] as const).map((level) => (
                     <button
                       key={level}
                       className={`access-option ${form.access_level === level ? "active" : ""}`}

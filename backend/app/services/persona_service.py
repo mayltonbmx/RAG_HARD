@@ -1,53 +1,134 @@
 """
 persona_service.py — Gerenciamento de Personas (Especialistas Virtuais).
 
-Persiste configurações em data/personas.json.
+Persiste configurações no Pinecone (namespace "_personas").
 Na primeira execução, injeta personas padrão para uso imediato.
 """
 
 import json
 import logging
-import os
 import uuid
-from pathlib import Path
 from typing import Optional
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_PERSONAS_FILE: str | None = None
+# Namespace dedicado para armazenar personas no Pinecone
+_PERSONAS_NAMESPACE = "_personas"
+_PERSONA_ID_PREFIX = "persona_"
 
 
-def _get_personas_path() -> Path:
-    """Retorna o caminho do arquivo personas.json."""
-    global _PERSONAS_FILE
-    if _PERSONAS_FILE is None:
-        settings = get_settings()
-        _PERSONAS_FILE = os.path.join(settings.data_dir, "personas.json")
-    return Path(_PERSONAS_FILE)
+def _get_index():
+    """Retorna a referência ao índice Pinecone."""
+    from app.services.pinecone_db import _get_index as get_pc_index
+    return get_pc_index()
+
+
+def _persona_to_vector(persona: dict) -> dict:
+    """Converte uma persona dict em um vetor Pinecone para armazenamento.
+
+    Usa vetor epsilon (não é para busca semântica, apenas armazenamento).
+    As rules são salvas como JSON string no metadata porque o Pinecone
+    tem limitações com listas de strings em metadados longos.
+    """
+    settings = get_settings()
+    dim = settings.embedding_dimensions
+
+    persona_id = f"{_PERSONA_ID_PREFIX}{persona['id']}"
+
+    metadata = {
+        "persona_id": persona["id"],
+        "name": persona.get("name", ""),
+        "description": persona.get("description", ""),
+        "identity": persona.get("identity", ""),
+        "rules_json": json.dumps(persona.get("rules", []), ensure_ascii=False),
+        "temperature": persona.get("temperature", 0.5),
+        "access_level": persona.get("access_level", "logged_in"),
+        "is_default": persona.get("is_default", False),
+        "content_type": "persona_config",
+    }
+
+    return {
+        "id": persona_id,
+        "values": [1e-7] * dim,
+        "metadata": metadata,
+    }
+
+
+def _vector_to_persona(metadata: dict) -> dict:
+    """Converte metadata Pinecone de volta para um dict de persona."""
+    rules = []
+    rules_raw = metadata.get("rules_json", "[]")
+    try:
+        rules = json.loads(rules_raw)
+    except (json.JSONDecodeError, TypeError):
+        rules = []
+
+    return {
+        "id": metadata.get("persona_id", ""),
+        "name": metadata.get("name", ""),
+        "description": metadata.get("description", ""),
+        "identity": metadata.get("identity", ""),
+        "rules": rules,
+        "temperature": float(metadata.get("temperature", 0.5)),
+        "access_level": metadata.get("access_level", "logged_in"),
+        "is_default": bool(metadata.get("is_default", False)),
+    }
 
 
 def _read_all() -> list[dict]:
-    """Lê todas as personas do arquivo JSON."""
-    path = _get_personas_path()
-    if not path.exists():
-        return []
+    """Lê todas as personas do Pinecone."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"Erro ao ler personas.json: {e}")
+        index = _get_index()
+        settings = get_settings()
+        dim = settings.embedding_dimensions
+
+        results = index.query(
+            vector=[0.0] * dim,
+            top_k=100,
+            include_metadata=True,
+            namespace=_PERSONAS_NAMESPACE,
+            filter={"content_type": {"$eq": "persona_config"}},
+        )
+
+        personas = []
+        for match in results.matches:
+            if match.metadata:
+                persona = _vector_to_persona(match.metadata)
+                if persona.get("id"):
+                    personas.append(persona)
+
+        logger.debug(f"Lidas {len(personas)} personas do Pinecone")
+        return personas
+
+    except Exception as e:
+        logger.error(f"Erro ao ler personas do Pinecone: {e}")
         return []
 
 
-def _write_all(personas: list[dict]) -> None:
-    """Grava todas as personas no arquivo JSON."""
-    path = _get_personas_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(personas, f, ensure_ascii=False, indent=2)
+def _write_one(persona: dict) -> None:
+    """Grava uma persona no Pinecone."""
+    try:
+        index = _get_index()
+        vector = _persona_to_vector(persona)
+        index.upsert(vectors=[vector], namespace=_PERSONAS_NAMESPACE)
+        logger.debug(f"Persona salva no Pinecone: {persona['name']}")
+    except Exception as e:
+        logger.error(f"Erro ao salvar persona no Pinecone: {e}")
+        raise
+
+
+def _delete_one(persona_id: str) -> None:
+    """Remove uma persona do Pinecone."""
+    try:
+        index = _get_index()
+        vector_id = f"{_PERSONA_ID_PREFIX}{persona_id}"
+        index.delete(ids=[vector_id], namespace=_PERSONAS_NAMESPACE)
+        logger.debug(f"Persona removida do Pinecone: {persona_id}")
+    except Exception as e:
+        logger.error(f"Erro ao remover persona do Pinecone: {e}")
+        raise
 
 
 def _get_default_personas() -> list[dict]:
@@ -138,23 +219,23 @@ def _get_default_personas() -> list[dict]:
 # ========================= CRUD =========================
 
 def init_personas() -> None:
-    """Inicializa o arquivo de personas com os padrões, se não existir."""
-    path = _get_personas_path()
-    if not path.exists():
+    """Inicializa personas com os padrões, se o Pinecone estiver vazio."""
+    personas = _read_all()
+    if not personas:
         defaults = _get_default_personas()
-        _write_all(defaults)
-        logger.info(f"Personas inicializadas com {len(defaults)} perfis padrão")
+        for persona in defaults:
+            _write_one(persona)
+        logger.info(f"Personas inicializadas no Pinecone com {len(defaults)} perfis padrão")
     else:
-        personas = _read_all()
-        logger.info(f"Personas carregadas: {len(personas)} perfis")
+        logger.info(f"Personas carregadas do Pinecone: {len(personas)} perfis")
 
 
 def list_personas(access_level: str | None = None) -> list[dict]:
     """Lista personas, opcionalmente filtrando por nível de acesso.
 
-    - access_level=None: retorna todas (para admin).
-    - access_level="public": retorna apenas públicas.
-    - access_level="logged_in": retorna públicas + logged_in.
+    - access_level=None: retorna todas (para painel administrativo).
+    - access_level="public": retorna apenas públicas (Free).
+    - access_level="logged_in": retorna públicas + assinantes.
     """
     personas = _read_all()
 
@@ -162,10 +243,8 @@ def list_personas(access_level: str | None = None) -> list[dict]:
         return personas
 
     allowed_levels = {"public"}
-    if access_level in ("logged_in", "admin"):
+    if access_level == "logged_in":
         allowed_levels.add("logged_in")
-    if access_level == "admin":
-        allowed_levels.add("admin")
 
     return [p for p in personas if p.get("access_level", "logged_in") in allowed_levels]
 
@@ -206,9 +285,9 @@ def create_persona(data: dict) -> dict:
     if new_persona.get("is_default", False):
         for p in personas:
             p["is_default"] = False
+            _write_one(p)
 
-    personas.append(new_persona)
-    _write_all(personas)
+    _write_one(new_persona)
     logger.info(f"Persona criada: {new_persona['name']} (id={persona_id})")
     return new_persona
 
@@ -229,13 +308,15 @@ def update_persona(persona_id: str, updates: dict) -> Optional[dict]:
     # Se está marcando como default, desmarca as outras
     if updates.get("is_default", False):
         for p in personas:
-            p["is_default"] = False
+            if p["id"] != persona_id:
+                p["is_default"] = False
+                _write_one(p)
 
     # Aplica apenas campos enviados (não-None)
     clean_updates = {k: v for k, v in updates.items() if v is not None}
     target.update(clean_updates)
 
-    _write_all(personas)
+    _write_one(target)
     logger.info(f"Persona atualizada: {target['name']} (id={persona_id})")
     return target
 
@@ -243,13 +324,12 @@ def update_persona(persona_id: str, updates: dict) -> Optional[dict]:
 def delete_persona(persona_id: str) -> bool:
     """Remove uma persona pelo ID."""
     personas = _read_all()
-    original_count = len(personas)
-    personas = [p for p in personas if p["id"] != persona_id]
+    exists = any(p["id"] == persona_id for p in personas)
 
-    if len(personas) == original_count:
+    if not exists:
         return False
 
-    _write_all(personas)
+    _delete_one(persona_id)
     logger.info(f"Persona removida: {persona_id}")
     return True
 

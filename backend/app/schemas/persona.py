@@ -8,9 +8,8 @@ from pydantic import BaseModel, Field
 
 class AccessLevel(str, Enum):
     """Controla quem pode ver e usar a persona no chat."""
-    public = "public"         # Qualquer visitante (não logado)
-    logged_in = "logged_in"   # Apenas usuários autenticados
-    admin = "admin"           # Apenas administradores
+    public = "public"         # Qualquer visitante — nível Free
+    logged_in = "logged_in"   # Apenas usuários autenticados — nível Assinantes
 
 
 class PersonaBase(BaseModel):

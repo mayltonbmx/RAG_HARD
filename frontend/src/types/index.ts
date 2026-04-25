@@ -60,7 +60,7 @@ export interface Persona {
   identity: string;
   rules: string[];
   temperature: number;
-  access_level: "public" | "logged_in" | "admin";
+  access_level: "public" | "logged_in";
   is_default: boolean;
 }
 
