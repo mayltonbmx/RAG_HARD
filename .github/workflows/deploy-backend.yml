@@ -1,3 +1,4 @@
+# Deploy: ALLOWED_ORIGINS atualizado
 name: Deploy Backend to Cloud Run
 
 on:
